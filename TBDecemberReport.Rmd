@@ -1,0 +1,2549 @@
+---
+title: "TB Report - December 2022"
+author: Emily Tyszka
+date: "`r Sys.Date()`"
+output:
+  pdf_document: default
+  classoption: landscape
+header-includes:
+- \usepackage{titling}
+- \usepackage{wrapfig}
+- \usepackage{lipsum}
+- \usepackage{pdflscape}
+- \pretitle{\begin{center} \includegraphics[width=2in,height=2in]{1200px-MassDPH_svg.png}\LARGE\\}
+- \posttitle{\end{center}}
+- \newcommand{\blandscape}{\begin{landscape}}
+- \newcommand{\elandscape}{\end{landscape}}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+
+defOut <- knitr::knit_hooks$get("plot")  # save the default plot hook 
+knitr::knit_hooks$set(plot = function(x, options) {  # set new plot hook ...
+  x <- defOut(x, options)  # first apply the default hook
+  if(!is.null(options$wrapfigure)) {  # then, if option wrapfigure is given ...
+    # create the new opening string for the wrapfigure environment ...
+    wf <- sprintf("\\begin{wrapfigure}{%s}{%g\\textwidth}", options$wrapfigure[[1]], options$wrapfigure[[2]])
+    x  <- gsub("\\begin{figure}", wf, x, fixed = T)  # and replace the default one with it.
+    x  <- gsub("{figure}", "{wrapfigure}", x, fixed = T)  # also replace the environment ending
+  }
+  return(x)
+})
+
+```
+
+```{r prep, include = FALSE,, echo=FALSE , warning=FALSE, message=FALSE, results = "asis", type = 'latex'}
+
+
+#Call libraries  
+library(readxl)
+library(dplyr)
+library(tidyverse)
+library(plyr)
+library(writexl)
+library(lubridate)
+library(stargazer)
+library(data.table)
+library(knitr)
+library(tinytex)
+library(data.table)
+library(quantmod)
+library(janitor)
+library(viridis)
+library(arsenal)
+
+options(kableExtra.auto_format = FALSE)
+
+#Read in All Sheet Names
+tb2022<-("J:/TB/Monthly Numbers/2022/12 December/Data/TB Master Report.xlsx") #TB Master Report - everything since 2020
+#Read in excel
+tbmonth2022<-read_excel(tb2022, skip = 1)
+view(tbmonth2022)
+#Tabulate Test and Results So We Know What Goes Where 
+tbmonth2022$RESULT<-toupper(tbmonth2022$RESULT)
+Results<-as.data.frame(table(tbmonth2022$TEST_NAME,tbmonth2022$RESULT))
+Res_Sub<-subset(Results, Results$Freq>0)
+
+
+#Receipt Month
+tbmonth2022$testmo<-month(as.POSIXlt(tbmonth2022$TESTDATE, format="%m/%d/%Y"))
+tbmonth2022$testyr<-year(as.POSIXlt(tbmonth2022$TESTDATE, format="%m/%d/%Y"))
+
+tbmonth2022$TESTDATE <- as.POSIXlt(tbmonth2022$TESTDATE, format="%m/%d/%Y")
+
+#Limit to Max Month and Year 
+tbmonth2022$maxyr<-max(tbmonth2022$testyr, na.rm = TRUE)
+tbmonth_1<-subset(tbmonth2022, tbmonth2022$testyr == 2022)
+tbmonth_1$maxmo<-max(tbmonth_1$testmo, na.rm = TRUE)
+  
+```
+
+NOTE ON DATES: 
+
+- All month ranges are based on date of test - a sample received in January but tested in February will be analyzed in the "February" section of the document.
+
+- TATs are calculated as time from receipt to result, in days. Nevertheless, as with the other results, TATs are also classified based on date of test. (So if the receipt date is in December and the test happens in January, the TAT will show up in the January section)
+
+\newpage
+
+# January
+## Test Summaries
+```{r jan tm tables, echo=FALSE , warning=FALSE, message=FALSE, results = "asis", type = 'latex'}
+
+#Limit to January
+tbmonth_2_jan<-subset(tbmonth_1, tbmonth_1$testmo == 1)
+
+#Smear samples 
+tbmonth_smear_jan<-subset(tbmonth_2_jan, tbmonth_2_jan$TEST_NAME == 'INTSMEAR')
+
+#Tabulate Smear Counts by testing procedure
+tbmonth_smear_jan<-as.data.frame(table(tbmonth_smear_jan$TESTPROC, tbmonth_smear_jan$RESULT))
+
+#Reshape
+tb_smear_1_jan<-reshape(tbmonth_smear_jan, timevar = 'Var1', idvar = 'Var2', direction = 'wide')
+
+#Rename columns
+names(tb_smear_1_jan)[1]<-'Result'
+names(tb_smear_1_jan)[2]<-'Flourochrome'
+names(tb_smear_1_jan)[3]<-'Kinyoun'
+
+#Add totals
+tb_smear_2_jan<-tb_smear_1_jan %>%
+  adorn_totals(c("row","col"))
+rownames(tb_smear_2_jan)<-NULL
+
+#kable
+kable(tb_smear_2_jan, caption = 'January Initial Smear by Testing Procedure')
+
+```
+
+
+```{r jan kt tables, echo=FALSE , warning=FALSE, message=FALSE, results = "asis", type = 'latex'}
+
+#Pull out Kinyouns 
+tbmonth_ky_jan<-subset(tbmonth_2_jan, tbmonth_2_jan$TEST_NAME == 'INTSMEAR' & tbmonth_2_jan$TESTPROC == 'Kinyoun')
+
+#Subset Columns to Accession Number, Test, and Testing Procedure
+tbmonth_ky_sub_jan<-subset(tbmonth_ky_jan, select = c('CURRACN', 'TEST_NAME', 'TESTPROC'))
+
+#Tabulate
+if(nrow(tbmonth_ky_sub_jan) > 0){
+  kable(tbmonth_ky_sub_jan, caption = 'January Kinyoun Test Accession Numbers')
+}
+
+```
+
+## Discordant Results
+
+```{r jan discordant results, echo=FALSE , warning=FALSE, message=FALSE, results = "asis", type = 'latex'}
+
+#Select Accession number, test, and testing result
+tbmonth_2_jan2 <- tbmonth_2_jan %>% select(c(CURRACN, TEST_NAME, RESULT))
+
+#Make wide table
+discordantsjanwide <- pivot_wider(tbmonth_2_jan2, names_from = TEST_NAME, 
+                                   values_from = RESULT, values_fn = list) 
+view(discordantsjanwide)
+discordantsjanwide <- unnest(discordantsjanwide, cols = c(ORGANISM_FOUND, CULTURE, NAAT, SUSCEPTIBILITY, INTSMEAR))
+
+#Turn into factors - positive, negative, not done
+discordantsjanwide$INTSMEAR <- as.factor(discordantsjanwide$INTSMEAR)
+levels(discordantsjanwide$INTSMEAR) <- list("POSITIVE" = 'AFB FOUND', "NEGATIVE" = 'AFB NOT FOUND', 'NOT DONE' = NULL)
+
+discordantsjanwide$NAAT <- as.factor(discordantsjanwide$NAAT)
+levels(discordantsjanwide$NAAT) <- list("POSITIVE" = 'POS', "NEGATIVE" = 'NEG', 'NOT DONE' = NULL)
+discordantsjanwide$CULTURE <- as.factor(discordantsjanwide$CULTURE)
+
+
+#Create variable for smear + culture -
+discordantsjanwide$smearPcultureN <- NA 
+discordantsjanwide$smearPcultureN <- ifelse(discordantsjanwide$INTSMEAR =="POSITIVE" & discordantsjanwide$CULTURE == "NEGATIVE", "discordant", discordantsjanwide$smearPcultureN)
+
+jansmearPcultureN <- discordantsjanwide %>% filter(smearPcultureN == "discordant")
+discordantsjan1<-subset(jansmearPcultureN, select = c('CURRACN', 'INTSMEAR', 'CULTURE', 'NAAT'))
+if(nrow(discordantsjan1) > 0){
+  kable(discordantsjan1, caption = 'Smear + and Culture -')
+}
+
+#Create variable for smear - culture +
+discordantsjanwide$smearNcultureP <- NA 
+discordantsjanwide$smearNcultureP <- ifelse(discordantsjanwide$CULTURE =="POSITIVE" & discordantsjanwide$INTSMEAR == "NEGATIVE", "discordant", discordantsjanwide$smearNcultureP)
+
+jansmearNcultureP <- discordantsjanwide %>% filter(smearNcultureP == "discordant")
+discordantsjan2<-subset(jansmearNcultureP, select = c('CURRACN', 'INTSMEAR', 'CULTURE', 'NAAT'))
+if(nrow(discordantsjan2) > 0){
+  kable(discordantsjan2, caption = 'Smear - and Culture +')
+}
+
+#Create variable for NAAT - culture +
+discordantsjanwide$naatNcultureP <- NA 
+discordantsjanwide$naatNcultureP <- ifelse(discordantsjanwide$CULTURE =="POSITIVE" & discordantsjanwide$NAAT == "NEGATIVE", "discordant", discordantsjanwide$naatNcultureP)
+
+jannaatNcultureP <- discordantsjanwide %>% filter(naatNcultureP == "discordant")
+discordantsjan3<-subset(jannaatNcultureP, select = c('CURRACN', 'INTSMEAR', 'CULTURE', 'NAAT'))
+if(nrow(discordantsjan3) > 0){
+  kable(discordantsjan3, caption = 'NAAT - and Culture +')
+}
+  
+```
+
+## Positive Reports
+```{r jan old or new?, echo=FALSE , warning=FALSE, message=FALSE, results = "asis", type = 'latex'}
+
+#pull in our log of everyone's first appearance
+firsttbpositives<-("J:/TB/Monthly Numbers/Ever Positive/All Positive EVER.xlsx") 
+firsttbpositives<-read_excel(firsttbpositives)
+
+# check this month's results against the log
+tbmonth_2_jan$ID <- paste(tbmonth_2_jan$FNAME, tbmonth_2_jan$LNAME, tbmonth_2_jan$DOB, sep="-") #match the ID from the first appearance log
+tbmonth_2_jan$priorpos <- ifelse(is.na(match(tbmonth_2_jan$ID, firsttbpositives$ID)),"No", "Yes") #if there's a match "priorpos" says "yes"
+janpriors<- merge(tbmonth_2_jan, firsttbpositives, by.x = "ID", by.y = "ID", all.x = TRUE) # merge together the log and the data
+janpriors$priorpos <- ifelse(janpriors$COLLDATE.y==janpriors$COLLDATE.x | 
+                                 month(as.POSIXlt(janpriors$COLLDATE.y, format="%m/%d/%Y")) ==month(as.POSIXlt(janpriors$COLLDATE.x, format="%m/%d/%Y")), 
+                               "No", janpriors$priorpos) #if the data's date is the same as the log's (aka this appearance is actually the first appearance) correct it to "No
+janpriors$priorpos <- ifelse(is.na(janpriors$COLLDATE.y)==TRUE, "No", janpriors$priorpos) #if the data's second date is null correct it to "No
+janpriors$`Date of First Positive` <- ifelse(janpriors$priorpos=="Yes", janpriors$COLLDATE.y, NA) #retrieve the date of first positive
+
+janpriors <- janpriors[!duplicated(janpriors$ID), ] #dump dupes
+janpriors<- filter(janpriors, RESULT == "M. TUBERCULOSIS COMPLEX") #dump negatives
+
+
+#tabulate 
+janoldornew<-as.data.frame(table(janpriors$priorpos))
+names(janoldornew)[1]<-'Appeared in the Past?'
+names(janoldornew)[2]<-'Count'
+kable(janoldornew, caption = 'Positive Results by New or Old Case')
+
+# accession numbers of new cases
+janpriors2<- filter(janpriors, priorpos == "No") #Pull out the  positives
+janpriorsnumbers<-subset(janpriors2, select = c('CURRACN', 'TEST_NAME', 'REPORT_STATE', "COLLDATE.x" ))
+names(janpriorsnumbers)[names(janpriorsnumbers) == 'COLLDATE.x'] <- "COLLECTION_DATE"
+if(nrow(janpriorsnumbers) > 0){
+  kable(janpriorsnumbers, caption = 'Accession Numbers of Cases Positive for the First Time in January')
+}
+
+# accession numbers of old cases
+janpriors3<- filter(janpriors, priorpos == "Yes") #Pull out the old positives
+janpriorsnumbers2<-subset(janpriors3, select = c('CURRACN', 'TEST_NAME', 'REPORT_STATE', "COLLDATE.x", "Date of First Positive" ))
+names(janpriorsnumbers2)[names(janpriorsnumbers2) == 'COLLDATE.x'] <- "COLLECTION_DATE"
+names(janpriorsnumbers2)[names(janpriorsnumbers2) == 'Date of First Positive'] <- "FIRST_POSITIVE"
+if(nrow(janpriorsnumbers2) > 0){
+  kable(janpriorsnumbers2, caption = 'Accession Numbers of Cases Positive in the Past')
+}
+
+
+# Add to the running list of all positives ever and export the updated list
+janpriors2$'ID' <- paste(janpriors2$'FNAME.x', janpriors2$'LNAME.x', janpriors2$'DOB.x', sep="-")
+names(janpriors2)[names(janpriors2) == 'FNAME.x'] <- "FNAME"
+names(janpriors2)[names(janpriors2) == 'LNAME.x'] <- "LNAME"
+names(janpriors2)[names(janpriors2) == 'DOB.x'] <- "DOB"
+names(janpriors2)[names(janpriors2) == 'COLLDATE.x'] <- "COLLDATE"
+jannewfirstpositive <- janpriors2 %>% select(c('FNAME','LNAME', 'DOB', 'COLLDATE', 'ID'))
+firsttbpositives <- bind_rows(firsttbpositives, jannewfirstpositive)
+write_xlsx(firsttbpositives,
+           path = "J:/TB/Monthly Numbers/Ever Positive/All Positive EVER Jan 2022.xlsx")
+
+```
+
+## Turnaround Times
+```{r jan tat, echo=FALSE , warning=FALSE, message=FALSE, results = "asis", type = 'latex'}
+
+TATjan <- tbmonth_2_jan
+
+# format dates
+TATjan$RECDATE <- as.POSIXct(TATjan$RECDATE, format="%m/%d/%Y", tz = "UTC")
+TATjan$RESULT_DATE <- as.POSIXct(TATjan$RESULT_DATE, format="%m/%d/%Y", tz = "UTC")
+
+#Calculate TAT
+TATjan$TAT <- as.numeric(difftime(TATjan$RESULT_DATE, TATjan$RECDATE, units = "days"))
+
+# Find means and graph
+means <- aggregate(TAT ~  TEST_NAME, TATjan, function(x) c(mean = round(mean(x, na.rm=TRUE), 2)))
+ggplot(TATjan, aes(x=TEST_NAME, y=TAT, fill=TEST_NAME)) + theme_bw() + 
+  geom_boxplot()+ scale_fill_viridis(discrete=TRUE, name = "Test") + 
+  xlab("Test") + ylab("Turnaround Time (days)") + theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) +
+  geom_text(data = means, aes(label = TAT, y = 100)) + scale_y_continuous(breaks = seq(0, 110, by = 10)) +
+  labs(title = "Receipt to Result Turnaround Times by Test", subtitle = "For samples received in January")
+
+```
+
+
+
+\newpage
+
+# February
+
+## Test Summaries
+
+```{r febr tm tables, echo=FALSE , warning=FALSE, message=FALSE, results = "asis", type = 'latex'}
+
+#Limit to February
+tbmonth_2_febr<-subset(tbmonth_1, tbmonth_1$testmo == 2)
+
+#Smear samples 
+tbmonth_smear_febr<-subset(tbmonth_2_febr, tbmonth_2_febr$TEST_NAME == 'INTSMEAR')
+
+#Tabulate Smear Counts by testing procedure
+tbmonth_smear_febr<-as.data.frame(table(tbmonth_smear_febr$TESTPROC, tbmonth_smear_febr$RESULT))
+
+#Reshape
+tb_smear_1_febr<-reshape(tbmonth_smear_febr, timevar = 'Var1', idvar = 'Var2', direction = 'wide')
+
+#Rename columns
+names(tb_smear_1_febr)[1]<-'Result'
+names(tb_smear_1_febr)[2]<-'Flourochrome'
+names(tb_smear_1_febr)[3]<-'Kinyoun'
+
+#Add totals
+tb_smear_2_febr<-tb_smear_1_febr%>%
+  adorn_totals(c("row","col"))
+rownames(tb_smear_2_febr)<-NULL
+
+#kable
+kable(tb_smear_2_febr, caption = 'February Initial Smear by Testing Procedure')
+```
+
+
+```{r febr kt tables, echo=FALSE , warning=FALSE, message=FALSE, results = "asis", type = 'latex'}
+
+#Pull out Kinyouns 
+tbmonth_ky_febr<-subset(tbmonth_2_febr, tbmonth_2_febr$TEST_NAME == 'INTSMEAR' & tbmonth_2_febr$TESTPROC == 'Kinyoun')
+
+#Subset Columns to Accession Number, Test, and Testing Procedure
+tbmonth_ky_sub_febr<-subset(tbmonth_ky_febr, select = c('CURRACN', 'TEST_NAME', 'TESTPROC'))
+
+#Tabulate
+if(nrow(tbmonth_ky_sub_febr) > 0){
+  kable(tbmonth_ky_sub_febr, caption = 'February Kinyoun Test Accession Numbers')
+}
+
+```
+
+## Discordant Results
+
+```{r febr discordant results, echo=FALSE , warning=FALSE, message=FALSE, results = "asis", type = 'latex'}
+
+#Select Accession number, test, and testing result
+tbmonth_2_febr2 <- tbmonth_2_febr %>% select(c(CURRACN, TEST_NAME, RESULT))
+
+#Make wide table
+discordantsfebrwide <- pivot_wider(tbmonth_2_febr2, names_from = TEST_NAME, 
+                                   values_from = RESULT, values_fn = list) 
+discordantsfebrwide <- unnest(discordantsfebrwide, cols = c(ORGANISM_FOUND, CULTURE, SUSCEPTIBILITY, NAAT, INTSMEAR))
+
+#Turn into factors - positive, negative, not done
+discordantsfebrwide$INTSMEAR <- as.factor(discordantsfebrwide$INTSMEAR)
+levels(discordantsfebrwide$INTSMEAR) <- list("POSITIVE" = 'AFB FOUND', "NEGATIVE" = 'AFB NOT FOUND', 'NOT DONE' = NULL)
+
+discordantsfebrwide$NAAT <- as.factor(discordantsfebrwide$NAAT)
+levels(discordantsfebrwide$NAAT) <- list("POSITIVE" = 'POS', "NEGATIVE" = 'NEG', 'NOT DONE' = NULL)
+discordantsfebrwide$CULTURE <- as.factor(discordantsfebrwide$CULTURE)
+
+
+#Create variable for smear + culture -
+discordantsfebrwide$smearPcultureN <- NA 
+discordantsfebrwide$smearPcultureN <- ifelse(discordantsfebrwide$INTSMEAR =="POSITIVE" & discordantsfebrwide$CULTURE == "NEGATIVE", "discordant", discordantsfebrwide$smearPcultureN)
+
+febrsmearPcultureN <- discordantsfebrwide %>% filter(smearPcultureN == "discordant")
+discordantsfebr1<-subset(febrsmearPcultureN, select = c('CURRACN', 'INTSMEAR', 'CULTURE', 'NAAT'))
+if(nrow(discordantsfebr1) > 0){
+  kable(discordantsfebr1, caption = 'Smear + and Culture -')
+}
+
+#Create variable for smear - culture +
+discordantsfebrwide$smearNcultureP <- NA 
+discordantsfebrwide$smearNcultureP <- ifelse(discordantsfebrwide$CULTURE =="POSITIVE" & discordantsfebrwide$INTSMEAR == "NEGATIVE", "discordant", discordantsfebrwide$smearNcultureP)
+
+febrsmearNcultureP <- discordantsfebrwide %>% filter(smearNcultureP == "discordant")
+discordantsfebr2<-subset(febrsmearNcultureP, select = c('CURRACN', 'INTSMEAR', 'CULTURE', 'NAAT'))
+if(nrow(discordantsfebr2) > 0){
+  kable(discordantsfebr2, caption = 'Smear - and Culture +')
+}
+
+#Create variable for NAAT - culture +
+discordantsfebrwide$naatNcultureP <- NA 
+discordantsfebrwide$naatNcultureP <- ifelse(discordantsfebrwide$CULTURE =="POSITIVE" & discordantsfebrwide$NAAT == "NEGATIVE", "discordant", discordantsfebrwide$naatNcultureP)
+
+febrnaatNcultureP <- discordantsfebrwide %>% filter(naatNcultureP == "discordant")
+discordantsfebr3<-subset(febrnaatNcultureP, select = c('CURRACN', 'INTSMEAR', 'CULTURE', 'NAAT'))
+if(nrow(discordantsfebr3) > 0){
+  kable(discordantsfebr3, caption = 'NAAT - and Culture +')
+}
+  
+```
+
+## Positive Reports
+
+```{r febr old or new?, echo=FALSE , warning=FALSE, message=FALSE, results = "asis", type = 'latex'}
+
+#pull in our log of everyone's first appearance
+firsttbpositivesjan<-("J:/TB/Monthly Numbers/Ever Positive/All Positive EVER Jan 2022.xlsx") 
+firsttbpositivesjan<-read_excel(firsttbpositivesjan)
+
+# check this month's results against the log
+tbmonth_2_febr$ID <- paste(tbmonth_2_febr$FNAME, tbmonth_2_febr$LNAME, tbmonth_2_febr$DOB, sep="-") #match the ID from the first appearance log
+tbmonth_2_febr$priorpos <- ifelse(is.na(match(tbmonth_2_febr$ID, firsttbpositivesjan$ID)),"No", "Yes") #if there's a match "priorpos" says "yes"
+febrpriors<- merge(tbmonth_2_febr, firsttbpositives, by.x = "ID", by.y = "ID", all.x = TRUE) # merge together the log and the data
+febrpriors$priorpos <- ifelse(febrpriors$COLLDATE.y==febrpriors$COLLDATE.x | 
+                                 month(as.POSIXlt(febrpriors$COLLDATE.y, format="%m/%d/%Y")) ==month(as.POSIXlt(febrpriors$COLLDATE.x, format="%m/%d/%Y")), 
+                               "No", febrpriors$priorpos) #if the data's date is the same as the log's (aka this appearance is actually the first appearance) correct it to "No
+febrpriors$priorpos <- ifelse(is.na(febrpriors$COLLDATE.y)==TRUE, "No", febrpriors$priorpos) #if the data's date is null correct it to "No
+febrpriors$`Date of First Positive` <- ifelse(febrpriors$priorpos=="Yes", febrpriors$COLLDATE.y, NA) #retrieve the date of first positive
+
+febrpriors <- febrpriors[!duplicated(febrpriors$ID), ] #dump dupes
+febrpriors<- filter(febrpriors, RESULT == "M. TUBERCULOSIS COMPLEX") #dump negatives
+#tabulate 
+febroldornew<-as.data.frame(table(febrpriors$priorpos))
+names(febroldornew)[1]<-'Appeared in the Past?'
+names(febroldornew)[2]<-'Count'
+kable(febroldornew, caption = 'Positive Results by New or Old Case')
+
+# accession numbers of new cases
+febrpriors2<- filter(febrpriors, priorpos == "No") #Pull out the  positives
+febrpriorsnumbers<-subset(febrpriors2, select = c('CURRACN', 'TEST_NAME', 'REPORT_STATE', "COLLDATE.x" ))
+names(febrpriorsnumbers)[names(febrpriorsnumbers) == 'COLLDATE.x'] <- "COLLECTION_DATE"
+if(nrow(febrpriorsnumbers) > 0){
+  kable(febrpriorsnumbers, caption = 'Accession Numbers of Cases Positive for the First Time in February')
+}
+
+# accession numbers of old cases
+febrpriors3<- filter(febrpriors, priorpos == "Yes") #Pull out the old positives
+febrpriorsnumbers2<-subset(febrpriors3, select = c('CURRACN', 'TEST_NAME', 'REPORT_STATE', "COLLDATE.x", "Date of First Positive" ))
+names(febrpriorsnumbers2)[names(febrpriorsnumbers2) == 'COLLDATE.x'] <- "COLLECTION_DATE"
+names(febrpriorsnumbers2)[names(febrpriorsnumbers2) == 'Date of First Positive'] <- "FIRST_POSITIVE"
+if(nrow(febrpriorsnumbers2) > 0){
+  kable(febrpriorsnumbers2, caption = 'Accession Numbers of Cases Positive in the Past')
+}
+
+
+# Add to the running list of all positives ever and export the updated list
+febrpriors2$'ID' <- paste(febrpriors2$'FNAME.x', febrpriors2$'LNAME.x', febrpriors2$'DOB.x', sep="-")
+names(febrpriors2)[names(febrpriors2) == 'FNAME.x'] <- "FNAME"
+names(febrpriors2)[names(febrpriors2) == 'LNAME.x'] <- "LNAME"
+names(febrpriors2)[names(febrpriors2) == 'DOB.x'] <- "DOB"
+names(febrpriors2)[names(febrpriors2) == 'COLLDATE.x'] <- "COLLDATE"
+febrnewfirstpositive <- febrpriors2 %>% select(c('FNAME','LNAME', 'DOB', 'COLLDATE', 'ID'))
+firsttbpositives <- bind_rows(jannewfirstpositive, febrnewfirstpositive)
+write_xlsx(firsttbpositives,
+           path = "J:/TB/Monthly Numbers/Ever Positive/All Positive EVER Febr 2022.xlsx")
+
+```
+
+## Turnaround Times
+```{r febr tat, echo=FALSE , warning=FALSE, message=FALSE, results = "asis", type = 'latex'}
+
+# format dates
+tbmonth_2_febr$RECDATE <- as.POSIXct(tbmonth_2_febr$RECDATE, format="%m/%d/%Y", tz = "UTC")
+tbmonth_2_febr$RESULT_DATE <- as.POSIXct(tbmonth_2_febr$RESULT_DATE, format="%m/%d/%Y", tz = "UTC")
+
+#Calculate TAT
+tbmonth_2_febr$TAT <- as.numeric(difftime(tbmonth_2_febr$RESULT_DATE, tbmonth_2_febr$RECDATE, units = "days"))
+
+# Find means and graph
+means <- aggregate(TAT ~  TEST_NAME, tbmonth_2_febr, function(x) c(mean = round(mean(x, na.rm=TRUE), 2)))
+ggplot(tbmonth_2_febr, aes(x=TEST_NAME, y=TAT, fill=TEST_NAME)) + theme_bw() + 
+  geom_boxplot()+ scale_fill_viridis(discrete=TRUE, name = "Test") + 
+  xlab("Test") + ylab("Turnaround Time (days)") + theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) +
+  geom_text(data = means, aes(label = TAT, y = 450)) + scale_y_continuous(trans='log10') +
+  labs(title = "Receipt to Result Turnaround Times by Test", subtitle = "For samples received in February; Log scale")
+
+```
+
+
+\newpage
+
+# March
+
+## Test Summaries
+
+```{r march tm tables, echo=FALSE , warning=FALSE, message=FALSE, results = "asis", type = 'latex'}
+
+#Limit to March
+tbmonth_2_march<-subset(tbmonth_1, tbmonth_1$testmo == 3)
+
+#Smear samples 
+tbmonth_smear_march<-subset(tbmonth_2_march, tbmonth_2_march$TEST_NAME == 'INTSMEAR')
+
+#Tabulate Smear Counts by testing procedure
+tbmonth_smear_march<-as.data.frame(table(tbmonth_smear_march$TESTPROC, tbmonth_smear_march$RESULT))
+
+#Reshape
+tb_smear_1_march<-reshape(tbmonth_smear_march, timevar = 'Var1', idvar = 'Var2', direction = 'wide')
+
+#Rename columns
+names(tb_smear_1_march)[1]<-'Result'
+names(tb_smear_1_march)[2]<-'Flourochrome'
+names(tb_smear_1_march)[3]<-'Kinyoun'
+
+#Add totals
+tb_smear_2_march<-tb_smear_1_march%>%
+  adorn_totals(c("row","col"))
+rownames(tb_smear_2_march)<-NULL
+
+#kable
+kable(tb_smear_2_march, caption = 'March Initial Smear by Testing Procedure')
+```
+
+
+```{r march kt tables, echo=FALSE , warning=FALSE, message=FALSE, results = "asis", type = 'latex'}
+
+#Pull out Kinyouns 
+tbmonth_ky_march<-subset(tbmonth_2_march, tbmonth_2_march$TEST_NAME == 'INTSMEAR' & tbmonth_2_march$TESTPROC == 'Kinyoun')
+
+#Subset Columns to Accession Number, Test, and Testing Procedure
+tbmonth_ky_sub_march<-subset(tbmonth_ky_march, select = c('CURRACN', 'TEST_NAME', 'TESTPROC'))
+
+#Tabulate
+if(nrow(tbmonth_ky_sub_march) > 0){
+  kable(tbmonth_ky_sub_march, caption = 'March Kinyoun Test Accession Numbers')
+}
+
+```
+
+## Discordant Results
+
+```{r march discordant results, echo=FALSE , warning=FALSE, message=FALSE, results = "asis", type = 'latex'}
+
+#Select Accession number, test, and testing result
+tbmonth_2_march2 <- tbmonth_2_march %>% select(c(CURRACN, TEST_NAME, RESULT))
+
+#Make wide table
+discordantsmarchwide <- pivot_wider(tbmonth_2_march2, names_from = TEST_NAME, 
+                                   values_from = RESULT, values_fn = list) 
+discordantsmarchwide <- unnest(discordantsmarchwide, cols = c(ORGANISM_FOUND, CULTURE, SUSCEPTIBILITY, NAAT, INTSMEAR))
+
+#Turn into factors - positive, negative, not done
+discordantsmarchwide$INTSMEAR <- as.factor(discordantsmarchwide$INTSMEAR)
+levels(discordantsmarchwide$INTSMEAR) <- list("POSITIVE" = 'AFB FOUND', "NEGATIVE" = 'AFB NOT FOUND', 'NOT DONE' = NULL)
+
+discordantsmarchwide$NAAT <- as.factor(discordantsmarchwide$NAAT)
+levels(discordantsmarchwide$NAAT) <- list("POSITIVE" = 'POS', "NEGATIVE" = 'NEG', 'NOT DONE' = NULL)
+discordantsmarchwide$CULTURE <- as.factor(discordantsmarchwide$CULTURE)
+
+
+#Create variable for smear + culture -
+discordantsmarchwide$smearPcultureN <- NA 
+discordantsmarchwide$smearPcultureN <- ifelse(discordantsmarchwide$INTSMEAR =="POSITIVE" & discordantsmarchwide$CULTURE == "NEGATIVE", "discordant", discordantsmarchwide$smearPcultureN)
+
+marchsmearPcultureN <- discordantsmarchwide %>% filter(smearPcultureN == "discordant")
+discordantsmarch1<-subset(marchsmearPcultureN, select = c('CURRACN', 'INTSMEAR', 'CULTURE', 'NAAT'))
+if(nrow(discordantsmarch1) > 0){
+  kable(discordantsmarch1, caption = 'Smear + and Culture -')
+}
+
+#Create variable for smear - culture +
+discordantsmarchwide$smearNcultureP <- NA 
+discordantsmarchwide$smearNcultureP <- ifelse(discordantsmarchwide$CULTURE =="POSITIVE" & discordantsmarchwide$INTSMEAR == "NEGATIVE", "discordant", discordantsmarchwide$smearNcultureP)
+
+marchsmearNcultureP <- discordantsmarchwide %>% filter(smearNcultureP == "discordant")
+discordantsmarch2<-subset(marchsmearNcultureP, select = c('CURRACN', 'INTSMEAR', 'CULTURE', 'NAAT'))
+if(nrow(discordantsmarch2) > 0){
+  kable(discordantsmarch2, caption = 'Smear - and Culture +')
+}
+
+#Create variable for NAAT - culture +
+discordantsmarchwide$naatNcultureP <- NA 
+discordantsmarchwide$naatNcultureP <- ifelse(discordantsmarchwide$CULTURE =="POSITIVE" & discordantsmarchwide$NAAT == "NEGATIVE", "discordant", discordantsmarchwide$naatNcultureP)
+
+marchnaatNcultureP <- discordantsmarchwide %>% filter(naatNcultureP == "discordant")
+discordantsmarch3<-subset(marchnaatNcultureP, select = c('CURRACN', 'INTSMEAR', 'CULTURE', 'NAAT'))
+if(nrow(discordantsmarch3) > 0){
+  kable(discordantsmarch3, caption = 'NAAT - and Culture +')
+}
+  
+```
+
+## Positive Reports
+
+```{r march old or new?, echo=FALSE , warning=FALSE, message=FALSE, results = "asis", type = 'latex'}
+
+#pull in our log of everyone's first appearance
+firsttbpositivesfebr<-("J:/TB/Monthly Numbers/Ever Positive/All Positive EVER febr 2022.xlsx") 
+firsttbpositivesfebr<-read_excel(firsttbpositivesfebr)
+
+# check this month's results against the log
+tbmonth_2_march$ID <- paste(tbmonth_2_march$FNAME, tbmonth_2_march$LNAME, tbmonth_2_march$DOB, sep="-") #match the ID from the first appearance log
+tbmonth_2_march$priorpos <- ifelse(is.na(match(tbmonth_2_march$ID, firsttbpositivesfebr$ID)),"No", "Yes") #if there's a match "priorpos" says "yes"
+marchpriors<- merge(tbmonth_2_march, firsttbpositivesfebr, by.x = "ID", by.y = "ID", all.x = TRUE) # merge together the log and the data
+marchpriors$priorpos <- ifelse(marchpriors$COLLDATE.y==marchpriors$COLLDATE.x | 
+                                 month(as.POSIXlt(marchpriors$COLLDATE.y, format="%m/%d/%Y")) ==month(as.POSIXlt(marchpriors$COLLDATE.x, format="%m/%d/%Y")), 
+                               "No", marchpriors$priorpos) #if the data's date is the same as the log's (aka this appearance is actually the first appearance) correct it to "No
+marchpriors$priorpos <- ifelse(is.na(marchpriors$COLLDATE.y)==TRUE, "No", marchpriors$priorpos) #if the second date is null correct it
+marchpriors$`Date of First Positive` <- ifelse(marchpriors$priorpos=="Yes", marchpriors$COLLDATE.y, NA) #retrieve the date of first positive
+
+marchpriors <- marchpriors[!duplicated(marchpriors$ID), ] #dump dupes
+marchpriors<- filter(marchpriors, RESULT == "M. TUBERCULOSIS COMPLEX") #dump negatives
+
+
+#tabulate 
+marcholdornew<-as.data.frame(table(marchpriors$priorpos))
+names(marcholdornew)[1]<-'Appeared in the Past?'
+names(marcholdornew)[2]<-'Count'
+kable(marcholdornew, caption = 'Positive Results by New or Old Case')
+
+# accession numbers of new cases
+marchpriors2<- filter(marchpriors, priorpos == "No") #Pull out the  positives
+marchpriorsnumbers<-subset(marchpriors2, select = c('CURRACN', 'TEST_NAME', 'REPORT_STATE', "COLLDATE.x" ))
+names(marchpriorsnumbers)[names(marchpriorsnumbers) == 'COLLDATE.x'] <- "COLLECTION_DATE"
+if(nrow(marchpriorsnumbers) > 0){
+  kable(marchpriorsnumbers, caption = 'Accession Numbers of Cases Positive for the First Time in March')
+}
+
+# accession numbers of old cases
+marchpriors3<- filter(marchpriors, priorpos == "Yes") #Pull out the old positives
+marchpriorsnumbers2<-subset(marchpriors3, select = c('CURRACN', 'TEST_NAME', 'REPORT_STATE', "COLLDATE.x", "Date of First Positive" ))
+names(marchpriorsnumbers2)[names(marchpriorsnumbers2) == 'COLLDATE.x'] <- "COLLECTION_DATE"
+names(marchpriorsnumbers2)[names(marchpriorsnumbers2) == 'Date of First Positive'] <- "FIRST_POSITIVE"
+if(nrow(marchpriorsnumbers2) > 0){
+  kable(marchpriorsnumbers2, caption = 'Accession Numbers of Cases Positive in the Past')
+}
+
+
+# Add to the running list of all positives ever and export the updated list
+marchpriors2$'ID' <- paste(marchpriors2$'FNAME.x', marchpriors2$'LNAME.x', marchpriors2$'DOB.x', sep="-")
+names(marchpriors2)[names(marchpriors2) == 'FNAME.x'] <- "FNAME"
+names(marchpriors2)[names(marchpriors2) == 'LNAME.x'] <- "LNAME"
+names(marchpriors2)[names(marchpriors2) == 'DOB.x'] <- "DOB"
+names(marchpriors2)[names(marchpriors2) == 'COLLDATE.x'] <- "COLLDATE"
+marchnewfirstpositive <- marchpriors2 %>% select(c('FNAME','LNAME', 'DOB', 'COLLDATE', 'ID'))
+firsttbpositivesmarch <- bind_rows(firsttbpositivesfebr, marchnewfirstpositive)
+write_xlsx(firsttbpositivesmarch,
+           path = "J:/TB/Monthly Numbers/Ever Positive/All Positive EVER march 2022.xlsx")
+
+```
+
+## Turnaround Times
+```{r march tat, echo=FALSE , warning=FALSE, message=FALSE, results = "asis", type = 'latex'}
+
+# format dates
+tbmonth_2_march$RECDATE <- as.POSIXct(tbmonth_2_march$RECDATE, format="%m/%d/%Y", tz = "UTC")
+tbmonth_2_march$RESULT_DATE <- as.POSIXct(tbmonth_2_march$RESULT_DATE, format="%m/%d/%Y", tz = "UTC")
+
+#Calculate TAT
+tbmonth_2_march$TAT <- as.numeric(difftime(tbmonth_2_march$RESULT_DATE, tbmonth_2_march$RECDATE, units = "days"))
+
+# Find means and graph
+means <- aggregate(TAT ~  TEST_NAME, tbmonth_2_march, function(x) c(mean = round(mean(x, na.rm=TRUE), 2)))
+ggplot(tbmonth_2_march, aes(x=TEST_NAME, y=TAT, fill=TEST_NAME)) + theme_bw() + 
+  geom_boxplot()+ scale_fill_viridis(discrete=TRUE, name = "Test") + 
+  xlab("Test") + ylab("Turnaround Time (days)") + theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) +
+  geom_text(data = means, aes(label = TAT, y = 450)) + scale_y_continuous(trans='log10') +
+  labs(title = "Receipt to Result Turnaround Times by Test", subtitle = "For samples received in March; Log scale")
+
+```
+
+\newpage
+
+# April
+
+## Test Summaries
+
+```{r April tm tables, echo=FALSE , warning=FALSE, message=FALSE, results = "asis", type = 'latex'}
+
+#Limit to April
+tbmonth_2_April<-subset(tbmonth_1, tbmonth_1$testmo == 4)
+
+#Smear samples 
+tbmonth_smear_April<-subset(tbmonth_2_April, tbmonth_2_April$TEST_NAME == 'INTSMEAR')
+
+#Tabulate Smear Counts by testing procedure
+tbmonth_smear_April<-as.data.frame(table(tbmonth_smear_April$TESTPROC, tbmonth_smear_April$RESULT))
+
+#Reshape
+tb_smear_1_April<-reshape(tbmonth_smear_April, timevar = 'Var1', idvar = 'Var2', direction = 'wide')
+
+#Rename columns
+names(tb_smear_1_April)[1]<-'Result'
+names(tb_smear_1_April)[2]<-'Flourochrome'
+names(tb_smear_1_April)[3]<-'Kinyoun'
+
+#Add totals
+tb_smear_2_April<-tb_smear_1_April%>%
+  adorn_totals(c("row","col"))
+rownames(tb_smear_2_April)<-NULL
+
+#kable
+kable(tb_smear_2_April, caption = 'April Initial Smear by Testing Procedure')
+```
+
+
+```{r April kt tables, echo=FALSE , warning=FALSE, message=FALSE, results = "asis", type = 'latex'}
+
+#Pull out Kinyouns 
+tbmonth_ky_April<-subset(tbmonth_2_April, tbmonth_2_April$TEST_NAME == 'INTSMEAR' & tbmonth_2_April$TESTPROC == 'Kinyoun')
+
+#Subset Columns to Accession Number, Test, and Testing Procedure
+tbmonth_ky_sub_April<-subset(tbmonth_ky_April, select = c('CURRACN', 'TEST_NAME', 'TESTPROC'))
+
+#Tabulate
+if(nrow(tbmonth_ky_sub_April) > 0){
+  kable(tbmonth_ky_sub_April, caption = 'April Kinyoun Test Accession Numbers')
+}
+
+```
+
+## Discordant Results
+
+```{r April discordant results, echo=FALSE , warning=FALSE, message=FALSE, results = "asis", type = 'latex'}
+
+#Select Accession number, test, and testing result
+tbmonth_2_April2 <- tbmonth_2_April %>% select(c(CURRACN, TEST_NAME, RESULT))
+
+#Make wide table
+discordantsAprilwide <- pivot_wider(tbmonth_2_April2, names_from = TEST_NAME, 
+                                   values_from = RESULT, values_fn = list) 
+discordantsAprilwide <- unnest(discordantsAprilwide, cols = c(ORGANISM_FOUND, CULTURE, SUSCEPTIBILITY, NAAT, INTSMEAR))
+
+#Turn into factors - positive, negative, not done
+discordantsAprilwide$INTSMEAR <- as.factor(discordantsAprilwide$INTSMEAR)
+levels(discordantsAprilwide$INTSMEAR) <- list("POSITIVE" = 'AFB FOUND', "NEGATIVE" = 'AFB NOT FOUND', 'NOT DONE' = NULL)
+
+discordantsAprilwide$NAAT <- as.factor(discordantsAprilwide$NAAT)
+levels(discordantsAprilwide$NAAT) <- list("POSITIVE" = 'POS', "NEGATIVE" = 'NEG', 'NOT DONE' = NULL)
+discordantsAprilwide$CULTURE <- as.factor(discordantsAprilwide$CULTURE)
+
+
+#Create variable for smear + culture -
+discordantsAprilwide$smearPcultureN <- NA 
+discordantsAprilwide$smearPcultureN <- ifelse(discordantsAprilwide$INTSMEAR =="POSITIVE" & discordantsAprilwide$CULTURE == "NEGATIVE", "discordant", discordantsAprilwide$smearPcultureN)
+
+AprilsmearPcultureN <- discordantsAprilwide %>% filter(smearPcultureN == "discordant")
+discordantsApril1<-subset(AprilsmearPcultureN, select = c('CURRACN', 'INTSMEAR', 'CULTURE', 'NAAT'))
+if(nrow(discordantsApril1) > 0){
+  kable(discordantsApril1, caption = 'Smear + and Culture -')
+}
+
+#Create variable for smear - culture +
+discordantsAprilwide$smearNcultureP <- NA 
+discordantsAprilwide$smearNcultureP <- ifelse(discordantsAprilwide$CULTURE =="POSITIVE" & discordantsAprilwide$INTSMEAR == "NEGATIVE", "discordant", discordantsAprilwide$smearNcultureP)
+
+AprilsmearNcultureP <- discordantsAprilwide %>% filter(smearNcultureP == "discordant")
+discordantsApril2<-subset(AprilsmearNcultureP, select = c('CURRACN', 'INTSMEAR', 'CULTURE', 'NAAT'))
+if(nrow(discordantsApril2) > 0){
+  kable(discordantsApril2, caption = 'Smear - and Culture +')
+}
+
+#Create variable for NAAT - culture +
+discordantsAprilwide$naatNcultureP <- NA 
+discordantsAprilwide$naatNcultureP <- ifelse(discordantsAprilwide$CULTURE =="POSITIVE" & discordantsAprilwide$NAAT == "NEGATIVE", "discordant", discordantsAprilwide$naatNcultureP)
+
+AprilnaatNcultureP <- discordantsAprilwide %>% filter(naatNcultureP == "discordant")
+discordantsApril3<-subset(AprilnaatNcultureP, select = c('CURRACN', 'INTSMEAR', 'CULTURE', 'NAAT'))
+if(nrow(discordantsApril3) > 0){
+  kable(discordantsApril3, caption = 'NAAT - and Culture +')
+}
+  
+```
+
+## Positive Reports
+
+```{r April old or new?, echo=FALSE , warning=FALSE, message=FALSE, results = "asis", type = 'latex'}
+
+#pull in our log of everyone's first appearance
+firsttbpositivesmar<-("J:/TB/Monthly Numbers/Ever Positive/All Positive EVER march 2022.xlsx") 
+firsttbpositivesmar<-read_excel(firsttbpositivesmar)
+
+# check this month's results against the log
+tbmonth_2_April$ID <- paste(tbmonth_2_April$FNAME, tbmonth_2_April$LNAME, tbmonth_2_April$DOB, sep="-") #match the ID from the first appearance log
+tbmonth_2_April$priorpos <- ifelse(is.na(match(tbmonth_2_April$ID, firsttbpositivesmar$ID)),"No", "Yes") #if there's a match "priorpos" says "yes"
+Aprilpriors<- merge(tbmonth_2_April, firsttbpositivesmar, by.x = "ID", by.y = "ID", all.x = TRUE) # merge together the log and the data
+Aprilpriors$priorpos <- ifelse(Aprilpriors$COLLDATE.y==Aprilpriors$COLLDATE.x | 
+                                 month(as.POSIXlt(Aprilpriors$COLLDATE.y, format="%m/%d/%Y")) ==month(as.POSIXlt(Aprilpriors$COLLDATE.x, format="%m/%d/%Y")), 
+                               "No", Aprilpriors$priorpos) #if the data's date is the same as the log's (aka this appearance is actually the first appearance) correct it to "No
+Aprilpriors$priorpos <- ifelse(is.na(Aprilpriors$COLLDATE.y)==TRUE, "No", Aprilpriors$priorpos) #if the data's date is null correct it to "No
+Aprilpriors$`Date of First Positive` <- ifelse(Aprilpriors$priorpos=="Yes", Aprilpriors$COLLDATE.y, NA) #retrieve the date of first positive
+
+Aprilpriors <- Aprilpriors[!duplicated(Aprilpriors$ID), ] #dump dupes
+Aprilpriors<- filter(Aprilpriors, RESULT == "M. TUBERCULOSIS COMPLEX") #dump anything other than M tb complex
+
+
+#tabulate 
+Apriloldornew<-as.data.frame(table(Aprilpriors$priorpos))
+names(Apriloldornew)[1]<-'Appeared in the Past?'
+names(Apriloldornew)[2]<-'Count'
+kable(Apriloldornew, caption = 'Positive Results by New or Old Case')
+
+# accession numbers of new cases
+Aprilpriors2<- filter(Aprilpriors, priorpos == "No") #Pull out the  positives
+Aprilpriorsnumbers<-subset(Aprilpriors2, select = c('CURRACN', 'TEST_NAME', 'REPORT_STATE', "COLLDATE.x" ))
+names(Aprilpriorsnumbers)[names(Aprilpriorsnumbers) == 'COLLDATE.x'] <- "COLLECTION_DATE"
+if(nrow(Aprilpriorsnumbers) > 0){
+  kable(Aprilpriorsnumbers, caption = 'Accession Numbers of Cases Positive for the First Time in April')
+}
+
+# accession numbers of old cases
+Aprilpriors3<- filter(Aprilpriors, priorpos == "Yes") #Pull out the old positives
+Aprilpriorsnumbers2<-subset(Aprilpriors3, select = c('CURRACN', 'TEST_NAME', 'REPORT_STATE', "COLLDATE.x", "Date of First Positive" ))
+names(Aprilpriorsnumbers2)[names(Aprilpriorsnumbers2) == 'COLLDATE.x'] <- "COLLECTION_DATE"
+names(Aprilpriorsnumbers2)[names(Aprilpriorsnumbers2) == 'Date of First Positive'] <- "FIRST_POSITIVE"
+if(nrow(Aprilpriorsnumbers2) > 0){
+  kable(Aprilpriorsnumbers2, caption = 'Accession Numbers of Cases Positive in the Past')
+}
+
+
+# Add to the running list of all positives ever and export the updated list
+Aprilpriors2$'ID' <- paste(Aprilpriors2$'FNAME.x', Aprilpriors2$'LNAME.x', Aprilpriors2$'DOB.x', sep="-")
+names(Aprilpriors2)[names(Aprilpriors2) == 'FNAME.x'] <- "FNAME"
+names(Aprilpriors2)[names(Aprilpriors2) == 'LNAME.x'] <- "LNAME"
+names(Aprilpriors2)[names(Aprilpriors2) == 'DOB.x'] <- "DOB"
+names(Aprilpriors2)[names(Aprilpriors2) == 'COLLDATE.x'] <- "COLLDATE"
+Aprilnewfirstpositive <- Aprilpriors2 %>% select(c('FNAME','LNAME', 'DOB', 'COLLDATE', 'ID'))
+firsttbpositivesApril <- bind_rows(firsttbpositivesmar, Aprilnewfirstpositive)
+write_xlsx(firsttbpositivesApril,
+           path = "J:/TB/Monthly Numbers/Ever Positive/All Positive EVER April 2022.xlsx")
+
+```
+
+## Turnaround Times
+```{r April tat, echo=FALSE , warning=FALSE, message=FALSE, results = "asis", type = 'latex'}
+
+# format dates
+tbmonth_2_April$RECDATE <- as.POSIXct(tbmonth_2_April$RECDATE, format="%m/%d/%Y", tz = "UTC")
+tbmonth_2_April$RESULT_DATE <- as.POSIXct(tbmonth_2_April$RESULT_DATE, format="%m/%d/%Y", tz = "UTC")
+
+#Calculate TAT
+tbmonth_2_April$TAT <- as.numeric(difftime(tbmonth_2_April$RESULT_DATE, tbmonth_2_April$RECDATE, units = "days"))
+
+# Find means and graph
+means <- aggregate(TAT ~  TEST_NAME, tbmonth_2_April, function(x) c(mean = round(mean(x, na.rm=TRUE), 2)))
+ggplot(tbmonth_2_April, aes(x=TEST_NAME, y=TAT, fill=TEST_NAME)) + theme_bw() + 
+  geom_boxplot()+ scale_fill_viridis(discrete=TRUE, name = "Test") + 
+  xlab("Test") + ylab("Turnaround Time (days)") + theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) +
+  geom_text(data = means, aes(label = TAT, y = 110)) + scale_y_continuous(breaks = seq(0, 110, by = 10)) +
+  labs(title = "Receipt to Result Turnaround Times by Test", subtitle = "For samples received in April")
+
+```
+
+\newpage
+
+# May
+
+## Test Summaries
+
+```{r May tm tables, echo=FALSE , warning=FALSE, message=FALSE, results = "asis", type = 'latex'}
+
+#Limit to May
+tbmonth_2_May<-subset(tbmonth_1, tbmonth_1$testmo == 5)
+
+#Smear samples 
+tbmonth_smear_May<-subset(tbmonth_2_May, tbmonth_2_May$TEST_NAME == 'INTSMEAR')
+
+#Tabulate Smear Counts by testing procedure
+tbmonth_smear_May<-as.data.frame(table(tbmonth_smear_May$TESTPROC, tbmonth_smear_May$RESULT))
+
+#Reshape
+tb_smear_1_May<-reshape(tbmonth_smear_May, timevar = 'Var1', idvar = 'Var2', direction = 'wide')
+
+#Rename columns
+names(tb_smear_1_May)[1]<-'Result'
+names(tb_smear_1_May)[2]<-'Flourochrome'
+names(tb_smear_1_May)[3]<-'Kinyoun'
+
+#Add totals
+tb_smear_2_May<-tb_smear_1_May%>%
+  adorn_totals(c("row","col"))
+rownames(tb_smear_2_May)<-NULL
+
+#kable
+kable(tb_smear_2_May, caption = 'May Initial Smear by Testing Procedure')
+```
+
+
+```{r May kt tables, echo=FALSE , warning=FALSE, message=FALSE, results = "asis", type = 'latex'}
+
+#Pull out Kinyouns 
+tbmonth_ky_May<-subset(tbmonth_2_May, tbmonth_2_May$TEST_NAME == 'INTSMEAR' & tbmonth_2_May$TESTPROC == 'Kinyoun')
+
+#Subset Columns to Accession Number, Test, and Testing Procedure
+tbmonth_ky_sub_May<-subset(tbmonth_ky_May, select = c('CURRACN', 'TEST_NAME', 'TESTPROC'))
+
+#Tabulate
+if(nrow(tbmonth_ky_sub_May) > 0){
+  kable(tbmonth_ky_sub_May, caption = 'May Kinyoun Test Accession Numbers')
+}
+
+```
+
+## Discordant Results
+
+```{r May discordant results, echo=FALSE , warning=FALSE, message=FALSE, results = "asis", type = 'latex'}
+
+#Select Accession number, test, and testing result
+tbmonth_2_May2 <- tbmonth_2_May %>% select(c(CURRACN, TEST_NAME, RESULT))
+
+#Make wide table
+discordantsMaywide <- pivot_wider(tbmonth_2_May2, names_from = TEST_NAME, 
+                                   values_from = RESULT, values_fn = list) 
+discordantsMaywide <- unnest(discordantsMaywide, cols = c(ORGANISM_FOUND, CULTURE, SUSCEPTIBILITY, NAAT, INTSMEAR))
+
+#Turn into factors - positive, negative, not done
+discordantsMaywide$INTSMEAR <- as.factor(discordantsMaywide$INTSMEAR)
+levels(discordantsMaywide$INTSMEAR) <- list("POSITIVE" = 'AFB FOUND', "NEGATIVE" = 'AFB NOT FOUND', 'NOT DONE' = NULL)
+
+discordantsMaywide$NAAT <- as.factor(discordantsMaywide$NAAT)
+levels(discordantsMaywide$NAAT) <- list("POSITIVE" = 'POS', "NEGATIVE" = 'NEG', 'NOT DONE' = NULL)
+discordantsMaywide$CULTURE <- as.factor(discordantsMaywide$CULTURE)
+
+
+#Create variable for smear + culture -
+discordantsMaywide$smearPcultureN <- NA 
+discordantsMaywide$smearPcultureN <- ifelse(discordantsMaywide$INTSMEAR =="POSITIVE" & discordantsMaywide$CULTURE == "NEGATIVE", "discordant", discordantsMaywide$smearPcultureN)
+
+MaysmearPcultureN <- discordantsMaywide %>% filter(smearPcultureN == "discordant")
+discordantsMay1<-subset(MaysmearPcultureN, select = c('CURRACN', 'INTSMEAR', 'CULTURE', 'NAAT'))
+if(nrow(discordantsMay1) > 0){
+  kable(discordantsMay1, caption = 'Smear + and Culture -')
+}
+
+#Create variable for smear - culture +
+discordantsMaywide$smearNcultureP <- NA 
+discordantsMaywide$smearNcultureP <- ifelse(discordantsMaywide$CULTURE =="POSITIVE" & discordantsMaywide$INTSMEAR == "NEGATIVE", "discordant", discordantsMaywide$smearNcultureP)
+
+MaysmearNcultureP <- discordantsMaywide %>% filter(smearNcultureP == "discordant")
+discordantsMay2<-subset(MaysmearNcultureP, select = c('CURRACN', 'INTSMEAR', 'CULTURE', 'NAAT'))
+if(nrow(discordantsMay2) > 0){
+  kable(discordantsMay2, caption = 'Smear - and Culture +')
+}
+
+#Create variable for NAAT - culture +
+discordantsMaywide$naatNcultureP <- NA 
+discordantsMaywide$naatNcultureP <- ifelse(discordantsMaywide$CULTURE =="POSITIVE" & discordantsMaywide$NAAT == "NEGATIVE", "discordant", discordantsMaywide$naatNcultureP)
+
+MaynaatNcultureP <- discordantsMaywide %>% filter(naatNcultureP == "discordant")
+discordantsMay3<-subset(MaynaatNcultureP, select = c('CURRACN', 'INTSMEAR', 'CULTURE', 'NAAT'))
+if(nrow(discordantsMay3) > 0){
+  kable(discordantsMay3, caption = 'NAAT - and Culture +')
+}
+  
+```
+
+## Positive Reports
+
+```{r May old or new?, echo=FALSE , warning=FALSE, message=FALSE, results = "asis", type = 'latex'}
+
+#pull in our log of everyone's first appearance
+firsttbpositivesapr<-("J:/TB/Monthly Numbers/Ever Positive/All Positive EVER April 2022.xlsx") 
+firsttbpositivesapr<-read_excel(firsttbpositivesapr)
+
+# check this month's results against the log
+tbmonth_2_May$ID <- paste(tbmonth_2_May$FNAME, tbmonth_2_May$LNAME, tbmonth_2_May$DOB, sep="-") #match the ID from the first appearance log
+tbmonth_2_May$priorpos <- ifelse(is.na(match(tbmonth_2_May$ID, firsttbpositivesapr$ID)),"No", "Yes") #if there's a match "priorpos" says "yes"
+Maypriors<- merge(tbmonth_2_May, firsttbpositivesapr, by.x = "ID", by.y = "ID", all.x = TRUE) # merge together the log and the data
+Maypriors$priorpos <- ifelse(Maypriors$COLLDATE.y==Maypriors$COLLDATE.x | 
+                                 month(as.POSIXlt(Maypriors$COLLDATE.y, format="%m/%d/%Y")) ==month(as.POSIXlt(Maypriors$COLLDATE.x, format="%m/%d/%Y")), 
+                               "No", Maypriors$priorpos) #if the data's date is the same as the log's (aka this appearance is actually the first appearance) correct it to "No
+Maypriors$priorpos <- ifelse(is.na(Maypriors$COLLDATE.y)==TRUE, "No", Maypriors$priorpos) #if the data's date is null correct it to "No
+Maypriors$`Date of First Positive` <- ifelse(Maypriors$priorpos=="Yes", Maypriors$COLLDATE.y, NA) #retrieve the date of first positive
+
+Maypriors <- Maypriors[!duplicated(Maypriors$ID), ] #dump dupes
+Maypriors<- filter(Maypriors, RESULT == "M. TUBERCULOSIS COMPLEX") #dump anything other than M tb complex
+
+
+#tabulate 
+Mayoldornew<-as.data.frame(table(Maypriors$priorpos))
+names(Mayoldornew)[1]<-'Appeared in the Past?'
+names(Mayoldornew)[2]<-'Count'
+kable(Mayoldornew, caption = 'Positive Results by New or Old Case')
+
+# accession numbers of new cases
+Maypriors2<- filter(Maypriors, priorpos == "No") #Pull out the  positives
+Maypriorsnumbers<-subset(Maypriors2, select = c('CURRACN', 'TEST_NAME', 'REPORT_STATE', "COLLDATE.x" ))
+names(Maypriorsnumbers)[names(Maypriorsnumbers) == 'COLLDATE.x'] <- "COLLECTION_DATE"
+if(nrow(Maypriorsnumbers) > 0){
+  kable(Maypriorsnumbers, caption = 'Accession Numbers of Cases Positive for the First Time in May')
+}
+
+# accession numbers of old cases
+Maypriors3<- filter(Maypriors, priorpos == "Yes") #Pull out the old positives
+Maypriorsnumbers2<-subset(Maypriors3, select = c('CURRACN', 'TEST_NAME', 'REPORT_STATE', "COLLDATE.x", "Date of First Positive" ))
+names(Maypriorsnumbers2)[names(Maypriorsnumbers2) == 'COLLDATE.x'] <- "COLLECTION_DATE"
+names(Maypriorsnumbers2)[names(Maypriorsnumbers2) == 'Date of First Positive'] <- "FIRST_POSITIVE"
+if(nrow(Maypriorsnumbers2) > 0){
+  kable(Maypriorsnumbers2, caption = 'Accession Numbers of Cases Positive in the Past')
+}
+
+
+# Add to the running list of all positives ever and export the updated list
+Maypriors2$'ID' <- paste(Maypriors2$'FNAME.x', Maypriors2$'LNAME.x', Maypriors2$'DOB.x', sep="-")
+names(Maypriors2)[names(Maypriors2) == 'FNAME.x'] <- "FNAME"
+names(Maypriors2)[names(Maypriors2) == 'LNAME.x'] <- "LNAME"
+names(Maypriors2)[names(Maypriors2) == 'DOB.x'] <- "DOB"
+names(Maypriors2)[names(Maypriors2) == 'COLLDATE.x'] <- "COLLDATE"
+Maynewfirstpositive <- Maypriors2 %>% select(c('FNAME','LNAME', 'DOB', 'COLLDATE', 'ID'))
+firsttbpositivesMay <- bind_rows(firsttbpositivesapr, Maynewfirstpositive)
+write_xlsx(firsttbpositivesMay,
+           path = "J:/TB/Monthly Numbers/Ever Positive/All Positive EVER May 2022.xlsx")
+
+```
+
+## Turnaround Times
+```{r May tat, echo=FALSE , warning=FALSE, message=FALSE, results = "asis", type = 'latex'}
+
+# format dates
+tbmonth_2_May$RECDATE <- as.POSIXct(tbmonth_2_May$RECDATE, format="%m/%d/%Y", tz = "UTC")
+tbmonth_2_May$RESULT_DATE <- as.POSIXct(tbmonth_2_May$RESULT_DATE, format="%m/%d/%Y", tz = "UTC")
+
+#Calculate TAT
+tbmonth_2_May$TAT <- as.numeric(difftime(tbmonth_2_May$RESULT_DATE, tbmonth_2_May$RECDATE, units = "days"))
+
+# Find means and graph
+means <- aggregate(TAT ~  TEST_NAME, tbmonth_2_May, function(x) c(mean = round(mean(x, na.rm=TRUE), 2)))
+ggplot(tbmonth_2_May, aes(x=TEST_NAME, y=TAT, fill=TEST_NAME)) + theme_bw() + 
+  geom_boxplot()+ scale_fill_viridis(discrete=TRUE, name = "Test") + 
+  xlab("Test") + ylab("Turnaround Time (days)") + theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) +
+  geom_text(data = means, aes(label = TAT, y = 200)) + scale_y_continuous(breaks = seq(0, 250, by = 20)) +
+  labs(title = "Receipt to Result Turnaround Times by Test", subtitle = "For samples received in May")
+
+```
+
+\newpage
+
+# June
+
+## Test Summaries
+
+```{r June tm tables, echo=FALSE , warning=FALSE, message=FALSE, results = "asis", type = 'latex'}
+
+#Limit to June
+tbmonth_2_June<-subset(tbmonth_1, tbmonth_1$testmo == 6)
+
+#Smear samples 
+tbmonth_smear_June<-subset(tbmonth_2_June, tbmonth_2_June$TEST_NAME == 'INTSMEAR')
+
+#Tabulate Smear Counts by testing procedure
+tbmonth_smear_June<-as.data.frame(table(tbmonth_smear_June$TESTPROC, tbmonth_smear_June$RESULT))
+
+#Reshape
+tb_smear_1_June<-reshape(tbmonth_smear_June, timevar = 'Var1', idvar = 'Var2', direction = 'wide')
+
+#Rename columns
+names(tb_smear_1_June)[1]<-'Result'
+names(tb_smear_1_June)[2]<-'Flourochrome'
+names(tb_smear_1_June)[3]<-'Kinyoun'
+
+#Add totals
+tb_smear_2_June<-tb_smear_1_June%>%
+  adorn_totals(c("row","col"))
+rownames(tb_smear_2_June)<-NULL
+
+#kable
+kable(tb_smear_2_June, caption = 'June Initial Smear by Testing Procedure')
+```
+
+
+```{r June kt tables, echo=FALSE , warning=FALSE, message=FALSE, results = "asis", type = 'latex'}
+
+#Pull out Kinyouns 
+tbmonth_ky_June<-subset(tbmonth_2_June, tbmonth_2_June$TEST_NAME == 'INTSMEAR' & tbmonth_2_June$TESTPROC == 'Kinyoun')
+
+#Subset Columns to Accession Number, Test, and Testing Procedure
+tbmonth_ky_sub_June<-subset(tbmonth_ky_June, select = c('CURRACN', 'TEST_NAME', 'TESTPROC'))
+
+#Tabulate
+if(nrow(tbmonth_ky_sub_June) > 0){
+  kable(tbmonth_ky_sub_June, caption = 'June Kinyoun Test Accession Numbers')
+}
+
+```
+
+## Discordant Results
+
+```{r June discordant results, echo=FALSE , warning=FALSE, message=FALSE, results = "asis", type = 'latex'}
+
+#Select Accession number, test, and testing result
+tbmonth_2_June2 <- tbmonth_2_June %>% select(c(CURRACN, TEST_NAME, RESULT))
+
+#Make wide table
+discordantsJunewide <- pivot_wider(tbmonth_2_June2, names_from = TEST_NAME, 
+                                   values_from = RESULT, values_fn = list) 
+discordantsJunewide <- unnest(discordantsJunewide, cols = c(ORGANISM_FOUND, CULTURE, SUSCEPTIBILITY, NAAT, INTSMEAR))
+
+#Turn into factors - positive, negative, not done
+discordantsJunewide$INTSMEAR <- as.factor(discordantsJunewide$INTSMEAR)
+levels(discordantsJunewide$INTSMEAR) <- list("POSITIVE" = 'AFB FOUND', "NEGATIVE" = 'AFB NOT FOUND', 'NOT DONE' = NULL)
+
+discordantsJunewide$NAAT <- as.factor(discordantsJunewide$NAAT)
+levels(discordantsJunewide$NAAT) <- list("POSITIVE" = 'POS', "NEGATIVE" = 'NEG', 'NOT DONE' = NULL)
+discordantsJunewide$CULTURE <- as.factor(discordantsJunewide$CULTURE)
+
+
+#Create variable for smear + culture -
+discordantsJunewide$smearPcultureN <- NA 
+discordantsJunewide$smearPcultureN <- ifelse(discordantsJunewide$INTSMEAR =="POSITIVE" & discordantsJunewide$CULTURE == "NEGATIVE", "discordant", discordantsJunewide$smearPcultureN)
+
+JunesmearPcultureN <- discordantsJunewide %>% filter(smearPcultureN == "discordant")
+discordantsJune1<-subset(JunesmearPcultureN, select = c('CURRACN', 'INTSMEAR', 'CULTURE', 'NAAT'))
+if(nrow(discordantsJune1) > 0){
+  kable(discordantsJune1, caption = 'Smear + and Culture -')
+}
+
+#Create variable for smear - culture +
+discordantsJunewide$smearNcultureP <- NA 
+discordantsJunewide$smearNcultureP <- ifelse(discordantsJunewide$CULTURE =="POSITIVE" & discordantsJunewide$INTSMEAR == "NEGATIVE", "discordant", discordantsJunewide$smearNcultureP)
+
+JunesmearNcultureP <- discordantsJunewide %>% filter(smearNcultureP == "discordant")
+discordantsJune2<-subset(JunesmearNcultureP, select = c('CURRACN', 'INTSMEAR', 'CULTURE', 'NAAT'))
+if(nrow(discordantsJune2) > 0){
+  kable(discordantsJune2, caption = 'Smear - and Culture +')
+}
+
+#Create variable for NAAT - culture +
+discordantsJunewide$naatNcultureP <- NA 
+discordantsJunewide$naatNcultureP <- ifelse(discordantsJunewide$CULTURE =="POSITIVE" & discordantsJunewide$NAAT == "NEGATIVE", "discordant", discordantsJunewide$naatNcultureP)
+
+JunenaatNcultureP <- discordantsJunewide %>% filter(naatNcultureP == "discordant")
+discordantsJune3<-subset(JunenaatNcultureP, select = c('CURRACN', 'INTSMEAR', 'CULTURE', 'NAAT'))
+if(nrow(discordantsJune3) > 0){
+  kable(discordantsJune3, caption = 'NAAT - and Culture +')
+}
+  
+```
+
+## Positive Reports
+
+```{r June old or new?, echo=FALSE , warning=FALSE, message=FALSE, results = "asis", type = 'latex'}
+
+#pull in our log of everyone's first appearance
+firsttbpositivesmay<-("J:/TB/Monthly Numbers/Ever Positive/All Positive EVER May 2022.xlsx") 
+firsttbpositivesmay<-read_excel(firsttbpositivesmay)
+
+# check this month's results against the log
+tbmonth_2_June$ID <- paste(tbmonth_2_June$FNAME, tbmonth_2_June$LNAME, tbmonth_2_June$DOB, sep="-") #match the ID from the first appearance log
+tbmonth_2_June$priorpos <- ifelse(is.na(match(tbmonth_2_June$ID, firsttbpositivesmay$ID)),"No", "Yes") #if there's a match "priorpos" says "yes"
+Junepriors<- merge(tbmonth_2_June, firsttbpositivesmay, by.x = "ID", by.y = "ID", all.x = TRUE) # merge together the log and the data
+Junepriors$priorpos <- ifelse(Junepriors$COLLDATE.y==Junepriors$COLLDATE.x | 
+                                 month(as.POSIXlt(Junepriors$COLLDATE.y, format="%m/%d/%Y")) ==month(as.POSIXlt(Junepriors$COLLDATE.x, format="%m/%d/%Y")), 
+                               "No", Junepriors$priorpos) #if the data's date is the same as the log's (aka this appearance is actually the first appearance) correct it to "No
+Junepriors$priorpos <- ifelse(is.na(Junepriors$COLLDATE.y)==TRUE, "No", Junepriors$priorpos) #if the data's date is null correct it to "No
+Junepriors$`Date of First Positive` <- ifelse(Junepriors$priorpos=="Yes", Junepriors$COLLDATE.y, NA) #retrieve the date of first positive
+
+Junepriors <- Junepriors[!duplicated(Junepriors$ID), ] #dump dupes
+Junepriors<- filter(Junepriors, RESULT == "M. TUBERCULOSIS COMPLEX") #dump anything other than M tb complex
+
+
+#tabulate 
+Juneoldornew<-as.data.frame(table(Junepriors$priorpos))
+names(Juneoldornew)[1]<-'Appeared in the Past?'
+names(Juneoldornew)[2]<-'Count'
+kable(Juneoldornew, caption = 'Positive Results by New or Old Case')
+
+# accession numbers of new cases
+Junepriors2<- filter(Junepriors, priorpos == "No") #Pull out the  positives
+Junepriorsnumbers<-subset(Junepriors2, select = c('CURRACN', 'TEST_NAME', 'REPORT_STATE', "COLLDATE.x" ))
+names(Junepriorsnumbers)[names(Junepriorsnumbers) == 'COLLDATE.x'] <- "COLLECTION_DATE"
+if(nrow(Junepriorsnumbers) > 0){
+  kable(Junepriorsnumbers, caption = 'Accession Numbers of Cases Positive for the First Time in June')
+}
+
+# accession numbers of old cases
+Junepriors3<- filter(Junepriors, priorpos == "Yes") #Pull out the old positives
+Junepriorsnumbers2<-subset(Junepriors3, select = c('CURRACN', 'TEST_NAME', 'REPORT_STATE', "COLLDATE.x", "Date of First Positive" ))
+names(Junepriorsnumbers2)[names(Junepriorsnumbers2) == 'COLLDATE.x'] <- "COLLECTION_DATE"
+names(Junepriorsnumbers2)[names(Junepriorsnumbers2) == 'Date of First Positive'] <- "FIRST_POSITIVE"
+if(nrow(Junepriorsnumbers2) > 0){
+  kable(Junepriorsnumbers2, caption = 'Accession Numbers of Cases Positive in the Past')
+}
+
+
+# Add to the running list of all positives ever and export the updated list
+Junepriors2$'ID' <- paste(Junepriors2$'FNAME.x', Junepriors2$'LNAME.x', Junepriors2$'DOB.x', sep="-")
+names(Junepriors2)[names(Junepriors2) == 'FNAME.x'] <- "FNAME"
+names(Junepriors2)[names(Junepriors2) == 'LNAME.x'] <- "LNAME"
+names(Junepriors2)[names(Junepriors2) == 'DOB.x'] <- "DOB"
+names(Junepriors2)[names(Junepriors2) == 'COLLDATE.x'] <- "COLLDATE"
+Junenewfirstpositive <- Junepriors2 %>% select(c('FNAME','LNAME', 'DOB', 'COLLDATE', 'ID'))
+firsttbpositivesJune <- bind_rows(firsttbpositivesmay, Junenewfirstpositive)
+write_xlsx(firsttbpositivesJune,
+           path = "J:/TB/Monthly Numbers/Ever Positive/All Positive EVER June 2022.xlsx")
+
+```
+
+## Turnaround Times
+```{r June tat, echo=FALSE , warning=FALSE, message=FALSE, results = "asis", type = 'latex'}
+
+# format dates
+tbmonth_2_June$RECDATE <- as.POSIXct(tbmonth_2_June$RECDATE, format="%m/%d/%Y", tz = "UTC")
+tbmonth_2_June$RESULT_DATE <- as.POSIXct(tbmonth_2_June$RESULT_DATE, format="%m/%d/%Y", tz = "UTC")
+
+#Calculate TAT
+tbmonth_2_June$TAT <- as.numeric(difftime(tbmonth_2_June$RESULT_DATE, tbmonth_2_June$RECDATE, units = "days"))
+
+# Find means and graph
+means <- aggregate(TAT ~  TEST_NAME, tbmonth_2_June, function(x) c(mean = round(mean(x, na.rm=TRUE), 2)))
+ggplot(tbmonth_2_June, aes(x=TEST_NAME, y=TAT, fill=TEST_NAME)) + theme_bw() + 
+  geom_boxplot()+ scale_fill_viridis(discrete=TRUE, name = "Test") + 
+  xlab("Test") + ylab("Turnaround Time (days)") + theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) +
+  geom_text(data = means, aes(label = TAT, y = 130)) + scale_y_continuous(breaks = seq(0, 150, by = 10)) +
+  labs(title = "Receipt to Result Turnaround Times by Test", subtitle = "For samples received in June")
+
+```
+
+\newpage
+
+# July
+
+## Test Summaries
+
+```{r July tm tables, echo=FALSE , warning=FALSE, message=FALSE, results = "asis", type = 'latex'}
+
+#Limit to July
+tbmonth_2_July<-subset(tbmonth_1, tbmonth_1$testmo == 7)
+
+#Smear samples 
+tbmonth_smear_July<-subset(tbmonth_2_July, tbmonth_2_July$TEST_NAME == 'INTSMEAR')
+
+#Tabulate Smear Counts by testing procedure
+tbmonth_smear_July<-as.data.frame(table(tbmonth_smear_July$TESTPROC, tbmonth_smear_July$RESULT))
+
+#Reshape
+tb_smear_1_July<-reshape(tbmonth_smear_July, timevar = 'Var1', idvar = 'Var2', direction = 'wide')
+
+#Rename columns
+names(tb_smear_1_July)[1]<-'Result'
+names(tb_smear_1_July)[2]<-'Flourochrome'
+names(tb_smear_1_July)[3]<-'Kinyoun'
+
+#Add totals
+tb_smear_2_July<-tb_smear_1_July%>%
+  adorn_totals(c("row","col"))
+rownames(tb_smear_2_July)<-NULL
+
+#kable
+kable(tb_smear_2_July, caption = 'July Initial Smear by Testing Procedure')
+```
+
+
+```{r July kt tables, echo=FALSE , warning=FALSE, message=FALSE, results = "asis", type = 'latex'}
+
+#Pull out Kinyouns 
+tbmonth_ky_July<-subset(tbmonth_2_July, tbmonth_2_July$TEST_NAME == 'INTSMEAR' & tbmonth_2_July$TESTPROC == 'Kinyoun')
+
+#Subset Columns to Accession Number, Test, and Testing Procedure
+tbmonth_ky_sub_July<-subset(tbmonth_ky_July, select = c('CURRACN', 'TEST_NAME', 'TESTPROC'))
+
+#Tabulate
+if(nrow(tbmonth_ky_sub_July) > 0){
+  kable(tbmonth_ky_sub_July, caption = 'July Kinyoun Test Accession Numbers')
+}
+
+```
+
+## Discordant Results
+
+```{r July discordant results, echo=FALSE , warning=FALSE, message=FALSE, results = "asis", type = 'latex'}
+
+#Select Accession number, test, and testing result
+tbmonth_2_July2 <- tbmonth_2_July %>% select(c(CURRACN, TEST_NAME, RESULT))
+
+#Make wide table
+discordantsJulywide <- pivot_wider(tbmonth_2_July2, names_from = TEST_NAME, 
+                                   values_from = RESULT, values_fn = list) 
+discordantsJulywide <- unnest(discordantsJulywide, cols = c(ORGANISM_FOUND, CULTURE, SUSCEPTIBILITY, NAAT, INTSMEAR))
+
+#Turn into factors - positive, negative, not done
+discordantsJulywide$INTSMEAR <- as.factor(discordantsJulywide$INTSMEAR)
+levels(discordantsJulywide$INTSMEAR) <- list("POSITIVE" = 'AFB FOUND', "NEGATIVE" = 'AFB NOT FOUND', 'NOT DONE' = NULL)
+
+discordantsJulywide$NAAT <- as.factor(discordantsJulywide$NAAT)
+levels(discordantsJulywide$NAAT) <- list("POSITIVE" = 'POS', "NEGATIVE" = 'NEG', 'NOT DONE' = NULL)
+discordantsJulywide$CULTURE <- as.factor(discordantsJulywide$CULTURE)
+
+
+#Create variable for smear + culture -
+discordantsJulywide$smearPcultureN <- NA 
+discordantsJulywide$smearPcultureN <- ifelse(discordantsJulywide$INTSMEAR =="POSITIVE" & discordantsJulywide$CULTURE == "NEGATIVE", "discordant", discordantsJulywide$smearPcultureN)
+
+JulysmearPcultureN <- discordantsJulywide %>% filter(smearPcultureN == "discordant")
+discordantsJuly1<-subset(JulysmearPcultureN, select = c('CURRACN', 'INTSMEAR', 'CULTURE', 'NAAT'))
+if(nrow(discordantsJuly1) > 0){
+  kable(discordantsJuly1, caption = 'Smear + and Culture -')
+}
+
+#Create variable for smear - culture +
+discordantsJulywide$smearNcultureP <- NA 
+discordantsJulywide$smearNcultureP <- ifelse(discordantsJulywide$CULTURE =="POSITIVE" & discordantsJulywide$INTSMEAR == "NEGATIVE", "discordant", discordantsJulywide$smearNcultureP)
+
+JulysmearNcultureP <- discordantsJulywide %>% filter(smearNcultureP == "discordant")
+discordantsJuly2<-subset(JulysmearNcultureP, select = c('CURRACN', 'INTSMEAR', 'CULTURE', 'NAAT'))
+if(nrow(discordantsJuly2) > 0){
+  kable(discordantsJuly2, caption = 'Smear - and Culture +')
+}
+
+#Create variable for NAAT - culture +
+discordantsJulywide$naatNcultureP <- NA 
+discordantsJulywide$naatNcultureP <- ifelse(discordantsJulywide$CULTURE =="POSITIVE" & discordantsJulywide$NAAT == "NEGATIVE", "discordant", discordantsJulywide$naatNcultureP)
+
+JulynaatNcultureP <- discordantsJulywide %>% filter(naatNcultureP == "discordant")
+discordantsJuly3<-subset(JulynaatNcultureP, select = c('CURRACN', 'INTSMEAR', 'CULTURE', 'NAAT'))
+if(nrow(discordantsJuly3) > 0){
+  kable(discordantsJuly3, caption = 'NAAT - and Culture +')
+}
+  
+```
+
+## Positive Reports
+
+```{r July old or new?, echo=FALSE , warning=FALSE, message=FALSE, results = "asis", type = 'latex'}
+
+#pull in our log of everyone's first appearance
+firsttbpositivesmay<-("J:/TB/Monthly Numbers/Ever Positive/All Positive EVER June 2022.xlsx") 
+firsttbpositivesmay<-read_excel(firsttbpositivesmay)
+
+# check this month's results against the log
+tbmonth_2_July$ID <- paste(tbmonth_2_July$FNAME, tbmonth_2_July$LNAME, tbmonth_2_July$DOB, sep="-") #match the ID from the first appearance log
+tbmonth_2_July$priorpos <- ifelse(is.na(match(tbmonth_2_July$ID, firsttbpositivesmay$ID)),"No", "Yes") #if there's a match "priorpos" says "yes"
+Julypriors<- merge(tbmonth_2_July, firsttbpositivesmay, by.x = "ID", by.y = "ID", all.x = TRUE) # merge together the log and the data
+Julypriors$priorpos <- ifelse(Julypriors$COLLDATE.y==Julypriors$COLLDATE.x | 
+                                 month(as.POSIXlt(Julypriors$COLLDATE.y, format="%m/%d/%Y")) ==month(as.POSIXlt(Julypriors$COLLDATE.x, format="%m/%d/%Y")), 
+                               "No", Julypriors$priorpos) #if the data's date is the same as the log's (aka this appearance is actually the first appearance) correct it to "No
+Julypriors$priorpos <- ifelse(is.na(Julypriors$COLLDATE.y)==TRUE, "No", Julypriors$priorpos) #if the data's date is null correct it to "No
+Julypriors$`Date of First Positive` <- ifelse(Julypriors$priorpos=="Yes", Julypriors$COLLDATE.y, NA) #retrieve the date of first positive
+
+Julypriors <- Julypriors[!duplicated(Julypriors$ID), ] #dump dupes
+Julypriors<- filter(Julypriors, RESULT == "M. TUBERCULOSIS COMPLEX") #dump anything other than M tb complex
+
+
+#tabulate 
+Julyoldornew<-as.data.frame(table(Julypriors$priorpos))
+names(Julyoldornew)[1]<-'Appeared in the Past?'
+names(Julyoldornew)[2]<-'Count'
+kable(Julyoldornew, caption = 'Positive Results by New or Old Case')
+
+# accession numbers of new cases
+Julypriors2<- filter(Julypriors, priorpos == "No") #Pull out the  positives
+Julypriorsnumbers<-subset(Julypriors2, select = c('CURRACN', 'TEST_NAME', 'REPORT_STATE', "COLLDATE.x" ))
+names(Julypriorsnumbers)[names(Julypriorsnumbers) == 'COLLDATE.x'] <- "COLLECTION_DATE"
+if(nrow(Julypriorsnumbers) > 0){
+  kable(Julypriorsnumbers, caption = 'Accession Numbers of Cases Positive for the First Time in July')
+}
+
+# accession numbers of old cases
+Julypriors3<- filter(Julypriors, priorpos == "Yes") #Pull out the old positives
+Julypriorsnumbers2<-subset(Julypriors3, select = c('CURRACN', 'TEST_NAME', 'REPORT_STATE', "COLLDATE.x", "Date of First Positive" ))
+names(Julypriorsnumbers2)[names(Julypriorsnumbers2) == 'COLLDATE.x'] <- "COLLECTION_DATE"
+names(Julypriorsnumbers2)[names(Julypriorsnumbers2) == 'Date of First Positive'] <- "FIRST_POSITIVE"
+if(nrow(Julypriorsnumbers2) > 0){
+  kable(Julypriorsnumbers2, caption = 'Accession Numbers of Cases Positive in the Past')
+}
+
+
+# Add to the running list of all positives ever and export the updated list
+Julypriors2$'ID' <- paste(Julypriors2$'FNAME.x', Julypriors2$'LNAME.x', Julypriors2$'DOB.x', sep="-")
+names(Julypriors2)[names(Julypriors2) == 'FNAME.x'] <- "FNAME"
+names(Julypriors2)[names(Julypriors2) == 'LNAME.x'] <- "LNAME"
+names(Julypriors2)[names(Julypriors2) == 'DOB.x'] <- "DOB"
+names(Julypriors2)[names(Julypriors2) == 'COLLDATE.x'] <- "COLLDATE"
+Julynewfirstpositive <- Julypriors2 %>% select(c('FNAME','LNAME', 'DOB', 'COLLDATE', 'ID'))
+firsttbpositivesJuly <- bind_rows(firsttbpositivesmay, Julynewfirstpositive)
+write_xlsx(firsttbpositivesJuly,
+           path = "J:/TB/Monthly Numbers/Ever Positive/All Positive EVER July 2022.xlsx")
+
+```
+
+## Turnaround Times
+```{r July tat, echo=FALSE , warning=FALSE, message=FALSE, results = "asis", type = 'latex'}
+
+# format dates
+tbmonth_2_July$RECDATE <- as.POSIXct(tbmonth_2_July$RECDATE, format="%m/%d/%Y", tz = "UTC")
+tbmonth_2_July$RESULT_DATE <- as.POSIXct(tbmonth_2_July$RESULT_DATE, format="%m/%d/%Y", tz = "UTC")
+
+#Calculate TAT
+tbmonth_2_July$TAT <- as.numeric(difftime(tbmonth_2_July$RESULT_DATE, tbmonth_2_July$RECDATE, units = "days"))
+
+# Find means and graph
+means <- aggregate(TAT ~  TEST_NAME, tbmonth_2_July, function(x) c(mean = round(mean(x, na.rm=TRUE), 2)))
+ggplot(tbmonth_2_July, aes(x=TEST_NAME, y=TAT, fill=TEST_NAME)) + theme_bw() + 
+  geom_boxplot()+ scale_fill_viridis(discrete=TRUE, name = "Test") + 
+  xlab("Test") + ylab("Turnaround Time (days)") + theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) +
+  geom_text(data = means, aes(label = TAT, y = 170)) + scale_y_continuous(breaks = seq(0, 200, by = 20)) +
+  labs(title = "Receipt to Result Turnaround Times by Test", subtitle = "For samples received in July")
+
+
+intsjuly <- tbmonth_2_July %>% filter(TEST_NAME == "INTSMEAR")
+intsjuly$TAT <- as.factor(intsjuly$TAT)
+summary(freqlist(~ TAT, data = intsjuly))
+
+intsall2022 <- tbmonth_1 %>% subset(tbmonth_1$testyr == 2022) %>% filter(TEST_NAME=="INTSMEAR")
+intsall2022$RECDATE <- as.POSIXct(intsall2022$RECDATE, format="%m/%d/%Y", tz = "UTC")
+intsall2022$RESULT_DATE <- as.POSIXct(intsall2022$RESULT_DATE, format="%m/%d/%Y", tz = "UTC")
+intsall2022$TAT <- as.numeric(difftime(intsall2022$RESULT_DATE, intsall2022$RECDATE, units = "days"))
+intsall2022$TAT <- as.factor(intsall2022$TAT)
+summary(freqlist(~ TAT, data = intsall2022))
+```
+
+\newpage
+
+# August
+
+## Test Summaries
+
+```{r august tm tables, echo=FALSE , warning=FALSE, message=FALSE, results = "asis", type = 'latex'}
+
+#Limit to august
+tbmonth_2_August<-subset(tbmonth_1, tbmonth_1$testmo == 8)
+
+#Smear samples 
+tbmonth_smear_August<-subset(tbmonth_2_August, tbmonth_2_August$TEST_NAME == 'INTSMEAR')
+
+#Tabulate Smear Counts by testing procedure
+tbmonth_smear_August<-as.data.frame(table(tbmonth_smear_August$TESTPROC, tbmonth_smear_August$RESULT))
+
+#Reshape
+tb_smear_1_August<-reshape(tbmonth_smear_August, timevar = 'Var1', idvar = 'Var2', direction = 'wide')
+
+#Rename columns
+names(tb_smear_1_August)[1]<-'Result'
+names(tb_smear_1_August)[2]<-'Flourochrome'
+names(tb_smear_1_August)[3]<-'Kinyoun'
+
+#Add totals
+tb_smear_2_August<-tb_smear_1_August%>%
+  adorn_totals(c("row","col"))
+rownames(tb_smear_2_August)<-NULL
+
+#kable
+kable(tb_smear_2_August, caption = 'August Initial Smear by Testing Procedure')
+```
+
+
+```{r August kt tables, echo=FALSE , warning=FALSE, message=FALSE, results = "asis", type = 'latex'}
+
+#Pull out Kinyouns 
+tbmonth_ky_August<-subset(tbmonth_2_August, tbmonth_2_August$TEST_NAME == 'INTSMEAR' & tbmonth_2_August$TESTPROC == 'Kinyoun')
+
+#Subset Columns to Accession Number, Test, and Testing Procedure
+tbmonth_ky_sub_August<-subset(tbmonth_ky_August, select = c('CURRACN', 'TEST_NAME', 'TESTPROC'))
+
+#Tabulate
+if(nrow(tbmonth_ky_sub_August) > 0){
+  kable(tbmonth_ky_sub_August, caption = 'August Kinyoun Test Accession Numbers')
+}
+
+```
+
+## Discordant Results
+
+```{r August discordant results, echo=FALSE , warning=FALSE, message=FALSE, results = "asis", type = 'latex'}
+
+#Select Accession number, test, and testing result
+tbmonth_2_August2 <- tbmonth_2_August %>% select(c(CURRACN, TEST_NAME, RESULT))
+
+#Make wide table
+discordantsAugustwide <- pivot_wider(tbmonth_2_August2, names_from = TEST_NAME, 
+                                   values_from = RESULT, values_fn = list) 
+discordantsAugustwide <- unnest(discordantsAugustwide, cols = c(ORGANISM_FOUND, CULTURE, NAAT, INTSMEAR))
+
+#Turn into factors - positive, negative, not done
+discordantsAugustwide$INTSMEAR <- as.factor(discordantsAugustwide$INTSMEAR)
+levels(discordantsAugustwide$INTSMEAR) <- list("POSITIVE" = 'AFB FOUND', "NEGATIVE" = 'AFB NOT FOUND', 'NOT DONE' = NULL)
+
+discordantsAugustwide$NAAT <- as.factor(discordantsAugustwide$NAAT)
+levels(discordantsAugustwide$NAAT) <- list("POSITIVE" = 'POS', "NEGATIVE" = 'NEG', 'NOT DONE' = NULL)
+discordantsAugustwide$CULTURE <- as.factor(discordantsAugustwide$CULTURE)
+
+
+#Create variable for smear + culture -
+discordantsAugustwide$smearPcultureN <- NA 
+discordantsAugustwide$smearPcultureN <- ifelse(discordantsAugustwide$INTSMEAR =="POSITIVE" & discordantsAugustwide$CULTURE == "NEGATIVE", "discordant", discordantsAugustwide$smearPcultureN)
+
+AugustsmearPcultureN <- discordantsAugustwide %>% filter(smearPcultureN == "discordant")
+discordantsAugust1<-subset(AugustsmearPcultureN, select = c('CURRACN', 'INTSMEAR', 'CULTURE', 'NAAT'))
+if(nrow(discordantsAugust1) > 0){
+  kable(discordantsAugust1, caption = 'Smear + and Culture -')
+}
+
+#Create variable for smear - culture +
+discordantsAugustwide$smearNcultureP <- NA 
+discordantsAugustwide$smearNcultureP <- ifelse(discordantsAugustwide$CULTURE =="POSITIVE" & discordantsAugustwide$INTSMEAR == "NEGATIVE", "discordant", discordantsAugustwide$smearNcultureP)
+
+AugustsmearNcultureP <- discordantsAugustwide %>% filter(smearNcultureP == "discordant")
+discordantsAugust2<-subset(AugustsmearNcultureP, select = c('CURRACN', 'INTSMEAR', 'CULTURE', 'NAAT'))
+if(nrow(discordantsAugust2) > 0){
+  kable(discordantsAugust2, caption = 'Smear - and Culture +')
+}
+
+#Create variable for NAAT - culture +
+discordantsAugustwide$naatNcultureP <- NA 
+discordantsAugustwide$naatNcultureP <- ifelse(discordantsAugustwide$CULTURE =="POSITIVE" & discordantsAugustwide$NAAT == "NEGATIVE", "discordant", discordantsAugustwide$naatNcultureP)
+
+AugustnaatNcultureP <- discordantsAugustwide %>% filter(naatNcultureP == "discordant")
+discordantsAugust3<-subset(AugustnaatNcultureP, select = c('CURRACN', 'INTSMEAR', 'CULTURE', 'NAAT'))
+if(nrow(discordantsAugust3) > 0){
+  kable(discordantsAugust3, caption = 'NAAT - and Culture +')
+}
+  
+```
+
+## Positive Reports
+
+```{r August old or new?, echo=FALSE , warning=FALSE, message=FALSE, results = "asis", type = 'latex'}
+
+#pull in our log of everyone's first appearance
+firsttbpositivesmay<-("J:/TB/Monthly Numbers/Ever Positive/All Positive EVER July 2022.xlsx") 
+firsttbpositivesmay<-read_excel(firsttbpositivesmay)
+
+# check this month's results against the log
+tbmonth_2_August$ID <- paste(tbmonth_2_August$FNAME, tbmonth_2_August$LNAME, tbmonth_2_August$DOB, sep="-") #match the ID from the first appearance log
+tbmonth_2_August$priorpos <- ifelse(is.na(match(tbmonth_2_August$ID, firsttbpositivesmay$ID)),"No", "Yes") #if there's a match "priorpos" says "yes"
+Augustpriors<- merge(tbmonth_2_August, firsttbpositivesmay, by.x = "ID", by.y = "ID", all.x = TRUE) # merge together the log and the data
+Augustpriors$priorpos <- ifelse(Augustpriors$COLLDATE.y==Augustpriors$COLLDATE.x | 
+                                 month(as.POSIXlt(Augustpriors$COLLDATE.y, format="%m/%d/%Y")) ==month(as.POSIXlt(Augustpriors$COLLDATE.x, format="%m/%d/%Y")), 
+                               "No", Augustpriors$priorpos) #if the data's date is the same as the log's (aka this appearance is actually the first appearance) correct it to "No
+Augustpriors$priorpos <- ifelse(is.na(Augustpriors$COLLDATE.y)==TRUE, "No", Augustpriors$priorpos) #if the data's date is null correct it to "No
+Augustpriors$`Date of First Positive` <- ifelse(Augustpriors$priorpos=="Yes", Augustpriors$COLLDATE.y, NA) #retrieve the date of first positive
+
+Augustpriors <- Augustpriors[!duplicated(Augustpriors$ID), ] #dump dupes
+Augustpriors<- filter(Augustpriors, RESULT == "M. TUBERCULOSIS COMPLEX") #dump anything other than M tb complex
+
+
+#tabulate 
+Augustoldornew<-as.data.frame(table(Augustpriors$priorpos))
+names(Augustoldornew)[1]<-'Appeared in the Past?'
+names(Augustoldornew)[2]<-'Count'
+kable(Augustoldornew, caption = 'Positive Results by New or Old Case')
+
+# accession numbers of new cases
+Augustpriors2<- filter(Augustpriors, priorpos == "No") #Pull out the  positives
+Augustpriorsnumbers<-subset(Augustpriors2, select = c('CURRACN', 'TEST_NAME', 'REPORT_STATE', "COLLDATE.x" ))
+names(Augustpriorsnumbers)[names(Augustpriorsnumbers) == 'COLLDATE.x'] <- "COLLECTION_DATE"
+if(nrow(Augustpriorsnumbers) > 0){
+  kable(Augustpriorsnumbers, caption = 'Accession Numbers of Cases Positive for the First Time in August')
+}
+
+# accession numbers of old cases
+Augustpriors3<- filter(Augustpriors, priorpos == "Yes") #Pull out the old positives
+Augustpriorsnumbers2<-subset(Augustpriors3, select = c('CURRACN', 'TEST_NAME', 'REPORT_STATE', "COLLDATE.x", "Date of First Positive" ))
+names(Augustpriorsnumbers2)[names(Augustpriorsnumbers2) == 'COLLDATE.x'] <- "COLLECTION_DATE"
+names(Augustpriorsnumbers2)[names(Augustpriorsnumbers2) == 'Date of First Positive'] <- "FIRST_POSITIVE"
+if(nrow(Augustpriorsnumbers2) > 0){
+  kable(Augustpriorsnumbers2, caption = 'Accession Numbers of Cases Positive in the Past')
+}
+
+
+# Add to the running list of all positives ever and export the updated list
+Augustpriors2$'ID' <- paste(Augustpriors2$'FNAME.x', Augustpriors2$'LNAME.x', Augustpriors2$'DOB.x', sep="-")
+names(Augustpriors2)[names(Augustpriors2) == 'FNAME.x'] <- "FNAME"
+names(Augustpriors2)[names(Augustpriors2) == 'LNAME.x'] <- "LNAME"
+names(Augustpriors2)[names(Augustpriors2) == 'DOB.x'] <- "DOB"
+names(Augustpriors2)[names(Augustpriors2) == 'COLLDATE.x'] <- "COLLDATE"
+Augustnewfirstpositive <- Augustpriors2 %>% select(c('FNAME','LNAME', 'DOB', 'COLLDATE', 'ID'))
+firsttbpositivesAugust <- bind_rows(firsttbpositivesmay, Augustnewfirstpositive)
+write_xlsx(firsttbpositivesAugust,
+           path = "J:/TB/Monthly Numbers/Ever Positive/All Positive EVER August 2022.xlsx")
+
+```
+
+## Turnaround Times
+```{r August tat, echo=FALSE , warning=FALSE, message=FALSE, results = "asis", type = 'latex'}
+
+# format dates
+tbmonth_2_August$RECDATE <- as.POSIXct(tbmonth_2_August$RECDATE, format="%m/%d/%Y", tz = "UTC")
+tbmonth_2_August$RESULT_DATE <- as.POSIXct(tbmonth_2_August$RESULT_DATE, format="%m/%d/%Y", tz = "UTC")
+
+#Calculate TAT
+tbmonth_2_August$TAT <- as.numeric(difftime(tbmonth_2_August$RESULT_DATE, tbmonth_2_August$RECDATE, units = "days"))
+
+# Find means and graph
+means <- aggregate(TAT ~  TEST_NAME, tbmonth_2_August, function(x) c(mean = round(mean(x, na.rm=TRUE), 2)))
+ggplot(tbmonth_2_August, aes(x=TEST_NAME, y=TAT, fill=TEST_NAME)) + theme_bw() + 
+  geom_boxplot()+ scale_fill_viridis(discrete=TRUE, name = "Test") + 
+  xlab("Test") + ylab("Turnaround Time (days)") + theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) +
+  geom_text(data = means, aes(label = TAT, y = 175)) + scale_y_continuous(breaks = seq(0, 200, by = 10)) +
+  labs(title = "Receipt to Result Turnaround Times by Test", subtitle = "For samples received in August")
+
+
+intsAugust <- tbmonth_2_August %>% filter(TEST_NAME == "INTSMEAR")
+intsAugust$TAT <- as.factor(intsAugust$TAT)
+summary(freqlist(~ TAT, data = intsAugust))
+
+intsall2022 <- tbmonth_1 %>% subset(tbmonth_1$testyr == 2022) %>% filter(TEST_NAME=="INTSMEAR")
+intsall2022$RECDATE <- as.POSIXct(intsall2022$RECDATE, format="%m/%d/%Y", tz = "UTC")
+intsall2022$RESULT_DATE <- as.POSIXct(intsall2022$RESULT_DATE, format="%m/%d/%Y", tz = "UTC")
+intsall2022$TAT <- as.numeric(difftime(intsall2022$RESULT_DATE, intsall2022$RECDATE, units = "days"))
+intsall2022$TAT <- as.factor(intsall2022$TAT)
+summary(freqlist(~ TAT, data = intsall2022))
+```
+
+\newpage
+
+# September
+
+## Test Summaries
+
+```{r September tm tables, echo=FALSE , warning=FALSE, message=FALSE, results = "asis", type = 'latex'}
+
+#Limit to September
+tbmonth_2_September<-subset(tbmonth_1, tbmonth_1$testmo == 9)
+
+#Smear samples 
+tbmonth_smear_September<-subset(tbmonth_2_September, tbmonth_2_September$TEST_NAME == 'INTSMEAR')
+
+#Tabulate Smear Counts by testing procedure
+tbmonth_smear_September<-as.data.frame(table(tbmonth_smear_September$TESTPROC, tbmonth_smear_September$RESULT))
+
+#Reshape
+tb_smear_1_September<-reshape(tbmonth_smear_September, timevar = 'Var1', idvar = 'Var2', direction = 'wide')
+
+#Rename columns
+names(tb_smear_1_September)[1]<-'Result'
+names(tb_smear_1_September)[2]<-'Flourochrome'
+names(tb_smear_1_September)[3]<-'Kinyoun'
+
+#Add totals
+tb_smear_2_September<-tb_smear_1_September%>%
+  adorn_totals(c("row","col"))
+rownames(tb_smear_2_September)<-NULL
+
+#kable
+kable(tb_smear_2_September, caption = 'September Initial Smear by Testing Procedure')
+```
+
+
+```{r September kt tables, echo=FALSE , warning=FALSE, message=FALSE, results = "asis", type = 'latex'}
+
+#Pull out Kinyouns 
+tbmonth_ky_September<-subset(tbmonth_2_September, tbmonth_2_September$TEST_NAME == 'INTSMEAR' & tbmonth_2_September$TESTPROC == 'Kinyoun')
+
+#Subset Columns to Accession Number, Test, and Testing Procedure
+tbmonth_ky_sub_September<-subset(tbmonth_ky_September, select = c('CURRACN', 'TEST_NAME', 'TESTPROC'))
+
+#Tabulate
+if(nrow(tbmonth_ky_sub_September) > 0){
+  kable(tbmonth_ky_sub_September, caption = 'September Kinyoun Test Accession Numbers')
+}
+
+```
+
+## Discordant Results
+
+```{r September discordant results, echo=FALSE , warning=FALSE, message=FALSE, results = "asis", type = 'latex'}
+
+#Select Accession number, test, and testing result
+tbmonth_2_September2 <- tbmonth_2_September %>% select(c(CURRACN, TEST_NAME, RESULT))
+
+#Make wide table
+discordantsSeptemberwide <- pivot_wider(tbmonth_2_September2, names_from = TEST_NAME, 
+                                   values_from = RESULT, values_fn = list) 
+discordantsSeptemberwide <- unnest(discordantsSeptemberwide, cols = c(ORGANISM_FOUND, CULTURE, SUSCEPTIBILITY, NAAT, INTSMEAR))
+
+#Turn into factors - positive, negative, not done
+discordantsSeptemberwide$INTSMEAR <- as.factor(discordantsSeptemberwide$INTSMEAR)
+levels(discordantsSeptemberwide$INTSMEAR) <- list("POSITIVE" = 'AFB FOUND', "NEGATIVE" = 'AFB NOT FOUND', 'NOT DONE' = NULL)
+
+discordantsSeptemberwide$NAAT <- as.factor(discordantsSeptemberwide$NAAT)
+levels(discordantsSeptemberwide$NAAT) <- list("POSITIVE" = 'POS', "NEGATIVE" = 'NEG', 'NOT DONE' = NULL)
+discordantsSeptemberwide$CULTURE <- as.factor(discordantsSeptemberwide$CULTURE)
+
+
+#Create variable for smear + culture -
+discordantsSeptemberwide$smearPcultureN <- NA 
+discordantsSeptemberwide$smearPcultureN <- ifelse(discordantsSeptemberwide$INTSMEAR =="POSITIVE" & discordantsSeptemberwide$CULTURE == "NEGATIVE", "discordant", discordantsSeptemberwide$smearPcultureN)
+
+SeptembersmearPcultureN <- discordantsSeptemberwide %>% filter(smearPcultureN == "discordant")
+discordantsSeptember1<-subset(SeptembersmearPcultureN, select = c('CURRACN', 'INTSMEAR', 'CULTURE', 'NAAT'))
+if(nrow(discordantsSeptember1) > 0){
+  kable(discordantsSeptember1, caption = 'Smear + and Culture -')
+}
+
+#Create variable for smear - culture +
+discordantsSeptemberwide$smearNcultureP <- NA 
+discordantsSeptemberwide$smearNcultureP <- ifelse(discordantsSeptemberwide$CULTURE =="POSITIVE" & discordantsSeptemberwide$INTSMEAR == "NEGATIVE", "discordant", discordantsSeptemberwide$smearNcultureP)
+
+SeptembersmearNcultureP <- discordantsSeptemberwide %>% filter(smearNcultureP == "discordant")
+discordantsSeptember2<-subset(SeptembersmearNcultureP, select = c('CURRACN', 'INTSMEAR', 'CULTURE', 'NAAT'))
+if(nrow(discordantsSeptember2) > 0){
+  kable(discordantsSeptember2, caption = 'Smear - and Culture +')
+}
+
+#Create variable for NAAT - culture +
+discordantsSeptemberwide$naatNcultureP <- NA 
+discordantsSeptemberwide$naatNcultureP <- ifelse(discordantsSeptemberwide$CULTURE =="POSITIVE" & discordantsSeptemberwide$NAAT == "NEGATIVE", "discordant", discordantsSeptemberwide$naatNcultureP)
+
+SeptembernaatNcultureP <- discordantsSeptemberwide %>% filter(naatNcultureP == "discordant")
+discordantsSeptember3<-subset(SeptembernaatNcultureP, select = c('CURRACN', 'INTSMEAR', 'CULTURE', 'NAAT'))
+if(nrow(discordantsSeptember3) > 0){
+  kable(discordantsSeptember3, caption = 'NAAT - and Culture +')
+}
+  
+```
+
+## Positive Reports
+
+```{r September old or new?, echo=FALSE , warning=FALSE, message=FALSE, results = "asis", type = 'latex'}
+
+#pull in our log of everyone's first appearance
+firsttbpositivesmay<-("J:/TB/Monthly Numbers/Ever Positive/All Positive EVER August 2022.xlsx") 
+firsttbpositivesmay<-read_excel(firsttbpositivesmay)
+
+# check this month's results against the log
+tbmonth_2_September$ID <- paste(tbmonth_2_September$FNAME, tbmonth_2_September$LNAME, tbmonth_2_September$DOB, sep="-") #match the ID from the first appearance log
+tbmonth_2_September$priorpos <- ifelse(is.na(match(tbmonth_2_September$ID, firsttbpositivesmay$ID)),"No", "Yes") #if there's a match "priorpos" says "yes"
+Septemberpriors<- merge(tbmonth_2_September, firsttbpositivesmay, by.x = "ID", by.y = "ID", all.x = TRUE) # merge together the log and the data
+Septemberpriors$priorpos <- ifelse(Septemberpriors$COLLDATE.y==Septemberpriors$COLLDATE.x | 
+                                 month(as.POSIXlt(Septemberpriors$COLLDATE.y, format="%m/%d/%Y")) ==month(as.POSIXlt(Septemberpriors$COLLDATE.x, format="%m/%d/%Y")), 
+                               "No", Septemberpriors$priorpos) #if the data's date is the same as the log's (aka this appearance is actually the first appearance) correct it to "No
+Septemberpriors$priorpos <- ifelse(is.na(Septemberpriors$COLLDATE.y)==TRUE, "No", Septemberpriors$priorpos) #if the data's date is null correct it to "No
+Septemberpriors$`Date of First Positive` <- ifelse(Septemberpriors$priorpos=="Yes", Septemberpriors$COLLDATE.y, NA) #retrieve the date of first positive
+
+Septemberpriors <- Septemberpriors[!duplicated(Septemberpriors$ID), ] #dump dupes
+Septemberpriors<- filter(Septemberpriors, RESULT == "M. TUBERCULOSIS COMPLEX") #dump anything other than M tb complex
+
+
+#tabulate 
+Septemberoldornew<-as.data.frame(table(Septemberpriors$priorpos))
+names(Septemberoldornew)[1]<-'Appeared in the Past?'
+names(Septemberoldornew)[2]<-'Count'
+kable(Septemberoldornew, caption = 'Positive Results by New or Old Case')
+
+# accession numbers of new cases
+Septemberpriors2<- filter(Septemberpriors, priorpos == "No") #Pull out the  positives
+Septemberpriorsnumbers<-subset(Septemberpriors2, select = c('CURRACN', 'TEST_NAME', 'REPORT_STATE', "COLLDATE.x" ))
+names(Septemberpriorsnumbers)[names(Septemberpriorsnumbers) == 'COLLDATE.x'] <- "COLLECTION_DATE"
+if(nrow(Septemberpriorsnumbers) > 0){
+  kable(Septemberpriorsnumbers, caption = 'Accession Numbers of Cases Positive for the First Time in September')
+}
+
+# accession numbers of old cases
+Septemberpriors3<- filter(Septemberpriors, priorpos == "Yes") #Pull out the old positives
+Septemberpriorsnumbers2<-subset(Septemberpriors3, select = c('CURRACN', 'TEST_NAME', 'REPORT_STATE', "COLLDATE.x", "Date of First Positive" ))
+names(Septemberpriorsnumbers2)[names(Septemberpriorsnumbers2) == 'COLLDATE.x'] <- "COLLECTION_DATE"
+names(Septemberpriorsnumbers2)[names(Septemberpriorsnumbers2) == 'Date of First Positive'] <- "FIRST_POSITIVE"
+if(nrow(Septemberpriorsnumbers2) > 0){
+  kable(Septemberpriorsnumbers2, caption = 'Accession Numbers of Cases Positive in the Past')
+}
+
+
+# Add to the running list of all positives ever and export the updated list
+Septemberpriors2$'ID' <- paste(Septemberpriors2$'FNAME.x', Septemberpriors2$'LNAME.x', Septemberpriors2$'DOB.x', sep="-")
+names(Septemberpriors2)[names(Septemberpriors2) == 'FNAME.x'] <- "FNAME"
+names(Septemberpriors2)[names(Septemberpriors2) == 'LNAME.x'] <- "LNAME"
+names(Septemberpriors2)[names(Septemberpriors2) == 'DOB.x'] <- "DOB"
+names(Septemberpriors2)[names(Septemberpriors2) == 'COLLDATE.x'] <- "COLLDATE"
+Septembernewfirstpositive <- Septemberpriors2 %>% select(c('FNAME','LNAME', 'DOB', 'COLLDATE', 'ID'))
+firsttbpositivesSeptember <- bind_rows(firsttbpositivesmay, Septembernewfirstpositive)
+write_xlsx(firsttbpositivesSeptember,
+           path = "J:/TB/Monthly Numbers/Ever Positive/All Positive EVER September 2022.xlsx")
+
+```
+
+## Turnaround Times
+```{r September tat, echo=FALSE , warning=FALSE, message=FALSE, results = "asis", type = 'latex'}
+
+# format dates
+tbmonth_2_September$RECDATE <- as.POSIXct(tbmonth_2_September$RECDATE, format="%m/%d/%Y", tz = "UTC")
+tbmonth_2_September$RESULT_DATE <- as.POSIXct(tbmonth_2_September$RESULT_DATE, format="%m/%d/%Y", tz = "UTC")
+
+#Calculate TAT
+tbmonth_2_September$TAT <- as.numeric(difftime(tbmonth_2_September$RESULT_DATE, tbmonth_2_September$RECDATE, units = "days"))
+
+# Find means and graph
+means <- aggregate(TAT ~  TEST_NAME, tbmonth_2_September, function(x) c(mean = round(mean(x, na.rm=TRUE), 2)))
+ggplot(tbmonth_2_September, aes(x=TEST_NAME, y=TAT, fill=TEST_NAME)) + theme_bw() + 
+  geom_boxplot()+ scale_fill_viridis(discrete=TRUE, name = "Test") + 
+  xlab("Test") + ylab("Turnaround Time (days)") + theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) +
+  geom_text(data = means, aes(label = TAT, y = 120)) + scale_y_continuous(breaks = seq(0, 150, by = 10)) +
+  labs(title = "Receipt to Result Turnaround Times by Test", subtitle = "For samples received in September")
+
+
+intsSeptember <- tbmonth_2_September %>% filter(TEST_NAME == "INTSMEAR")
+intsSeptember$TAT <- as.factor(intsSeptember$TAT)
+summary(freqlist(~ TAT, data = intsSeptember))
+
+intsall2022 <- tbmonth_1 %>% subset(tbmonth_1$testyr == 2022) %>% filter(TEST_NAME=="INTSMEAR")
+intsall2022$RECDATE <- as.POSIXct(intsall2022$RECDATE, format="%m/%d/%Y", tz = "UTC")
+intsall2022$RESULT_DATE <- as.POSIXct(intsall2022$RESULT_DATE, format="%m/%d/%Y", tz = "UTC")
+intsall2022$TAT <- as.numeric(difftime(intsall2022$RESULT_DATE, intsall2022$RECDATE, units = "days"))
+intsall2022$TAT <- as.factor(intsall2022$TAT)
+summary(freqlist(~ TAT, data = intsall2022))
+```
+
+\newpage
+ 
+# October
+
+## Test Summaries
+
+```{r October tm tables, echo=FALSE , warning=FALSE, message=FALSE, results = "asis", type = 'latex'}
+
+#Limit to October
+tbmonth_2_October<-subset(tbmonth_1, tbmonth_1$testmo == 10)
+
+#Smear samples 
+tbmonth_smear_October<-subset(tbmonth_2_October, tbmonth_2_October$TEST_NAME == 'INTSMEAR')
+
+#Tabulate Smear Counts by testing procedure
+tbmonth_smear_October<-as.data.frame(table(tbmonth_smear_October$TESTPROC, tbmonth_smear_October$RESULT))
+
+#Reshape
+tb_smear_1_October<-reshape(tbmonth_smear_October, timevar = 'Var1', idvar = 'Var2', direction = 'wide')
+
+#Rename columns
+names(tb_smear_1_October)[1]<-'Result'
+names(tb_smear_1_October)[2]<-'Flourochrome'
+names(tb_smear_1_October)[3]<-'Kinyoun'
+
+#Add totals
+tb_smear_2_October<-tb_smear_1_October%>%
+  adorn_totals(c("row","col"))
+rownames(tb_smear_2_October)<-NULL
+
+#kable
+kable(tb_smear_2_October, caption = 'October Initial Smear by Testing Procedure')
+```
+
+
+```{r October kt tables, echo=FALSE , warning=FALSE, message=FALSE, results = "asis", type = 'latex'}
+
+#Pull out Kinyouns 
+tbmonth_ky_October<-subset(tbmonth_2_October, tbmonth_2_October$TEST_NAME == 'INTSMEAR' & tbmonth_2_October$TESTPROC == 'Kinyoun')
+
+#Subset Columns to Accession Number, Test, and Testing Procedure
+tbmonth_ky_sub_October<-subset(tbmonth_ky_October, select = c('CURRACN', 'TEST_NAME', 'TESTPROC'))
+
+#Tabulate
+if(nrow(tbmonth_ky_sub_October) > 0){
+  kable(tbmonth_ky_sub_October, caption = 'October Kinyoun Test Accession Numbers')
+}
+
+```
+
+## Discordant Results
+
+```{r October discordant results, echo=FALSE , warning=FALSE, message=FALSE, results = "asis", type = 'latex'}
+
+#Select Accession number, test, and testing result
+tbmonth_2_October2 <- tbmonth_2_October %>% select(c(CURRACN, TEST_NAME, RESULT))
+
+#Make wide table
+discordantsOctoberwide <- pivot_wider(tbmonth_2_October2, names_from = TEST_NAME, 
+                                   values_from = RESULT, values_fn = list) 
+discordantsOctoberwide <- unnest(discordantsOctoberwide, cols = c(ORGANISM_FOUND, CULTURE, SUSCEPTIBILITY, NAAT, INTSMEAR))
+
+#Turn into factors - positive, negative, not done
+discordantsOctoberwide$INTSMEAR <- as.factor(discordantsOctoberwide$INTSMEAR)
+levels(discordantsOctoberwide$INTSMEAR) <- list("POSITIVE" = 'AFB FOUND', "NEGATIVE" = 'AFB NOT FOUND', 'NOT DONE' = NULL)
+
+discordantsOctoberwide$NAAT <- as.factor(discordantsOctoberwide$NAAT)
+levels(discordantsOctoberwide$NAAT) <- list("POSITIVE" = 'POS', "NEGATIVE" = 'NEG', 'NOT DONE' = NULL)
+discordantsOctoberwide$CULTURE <- as.factor(discordantsOctoberwide$CULTURE)
+
+
+#Create variable for smear + culture -
+discordantsOctoberwide$smearPcultureN <- NA 
+discordantsOctoberwide$smearPcultureN <- ifelse(discordantsOctoberwide$INTSMEAR =="POSITIVE" & discordantsOctoberwide$CULTURE == "NEGATIVE", "discordant", discordantsOctoberwide$smearPcultureN)
+
+OctobersmearPcultureN <- discordantsOctoberwide %>% filter(smearPcultureN == "discordant")
+discordantsOctober1<-subset(OctobersmearPcultureN, select = c('CURRACN', 'INTSMEAR', 'CULTURE', 'NAAT'))
+if(nrow(discordantsOctober1) > 0){
+  kable(discordantsOctober1, caption = 'Smear + and Culture -')
+}
+
+#Create variable for smear - culture +
+discordantsOctoberwide$smearNcultureP <- NA 
+discordantsOctoberwide$smearNcultureP <- ifelse(discordantsOctoberwide$CULTURE =="POSITIVE" & discordantsOctoberwide$INTSMEAR == "NEGATIVE", "discordant", discordantsOctoberwide$smearNcultureP)
+
+OctobersmearNcultureP <- discordantsOctoberwide %>% filter(smearNcultureP == "discordant")
+discordantsOctober2<-subset(OctobersmearNcultureP, select = c('CURRACN', 'INTSMEAR', 'CULTURE', 'NAAT'))
+if(nrow(discordantsOctober2) > 0){
+  kable(discordantsOctober2, caption = 'Smear - and Culture +')
+}
+
+#Create variable for NAAT - culture +
+discordantsOctoberwide$naatNcultureP <- NA 
+discordantsOctoberwide$naatNcultureP <- ifelse(discordantsOctoberwide$CULTURE =="POSITIVE" & discordantsOctoberwide$NAAT == "NEGATIVE", "discordant", discordantsOctoberwide$naatNcultureP)
+
+OctobernaatNcultureP <- discordantsOctoberwide %>% filter(naatNcultureP == "discordant")
+discordantsOctober3<-subset(OctobernaatNcultureP, select = c('CURRACN', 'INTSMEAR', 'CULTURE', 'NAAT'))
+if(nrow(discordantsOctober3) > 0){
+  kable(discordantsOctober3, caption = 'NAAT - and Culture +')
+}
+  
+```
+
+## Positive Reports
+
+```{r October old or new?, echo=FALSE , warning=FALSE, message=FALSE, results = "asis", type = 'latex'}
+
+#pull in our log of everyone's first appearance
+firsttbpositivesmay<-("J:/TB/Monthly Numbers/Ever Positive/All Positive EVER September 2022.xlsx") 
+firsttbpositivesmay<-read_excel(firsttbpositivesmay)
+
+# check this month's results against the log
+tbmonth_2_October$ID <- paste(tbmonth_2_October$FNAME, tbmonth_2_October$LNAME, tbmonth_2_October$DOB, sep="-") #match the ID from the first appearance log
+tbmonth_2_October$priorpos <- ifelse(is.na(match(tbmonth_2_October$ID, firsttbpositivesmay$ID)),"No", "Yes") #if there's a match "priorpos" says "yes"
+Octoberpriors<- merge(tbmonth_2_October, firsttbpositivesmay, by.x = "ID", by.y = "ID", all.x = TRUE) # merge together the log and the data
+Octoberpriors$priorpos <- ifelse(Octoberpriors$COLLDATE.y==Octoberpriors$COLLDATE.x | 
+                                 month(as.POSIXlt(Octoberpriors$COLLDATE.y, format="%m/%d/%Y")) ==month(as.POSIXlt(Octoberpriors$COLLDATE.x, format="%m/%d/%Y")), 
+                               "No", Octoberpriors$priorpos) #if the data's date is the same as the log's (aka this appearance is actually the first appearance) correct it to "No
+Octoberpriors$priorpos <- ifelse(is.na(Octoberpriors$COLLDATE.y)==TRUE, "No", Octoberpriors$priorpos) #if the data's date is null correct it to "No
+Octoberpriors$`Date of First Positive` <- ifelse(Octoberpriors$priorpos=="Yes", Octoberpriors$COLLDATE.y, NA) #retrieve the date of first positive
+
+Octoberpriors <- Octoberpriors[!duplicated(Octoberpriors$ID), ] #dump dupes
+Octoberpriors<- filter(Octoberpriors, RESULT == "M. TUBERCULOSIS COMPLEX") #dump anything other than M tb complex
+
+
+#tabulate 
+Octoberoldornew<-as.data.frame(table(Octoberpriors$priorpos))
+names(Octoberoldornew)[1]<-'Appeared in the Past?'
+names(Octoberoldornew)[2]<-'Count'
+kable(Octoberoldornew, caption = 'Positive Results by New or Old Case')
+
+# accession numbers of new cases
+Octoberpriors2<- filter(Octoberpriors, priorpos == "No") #Pull out the  positives
+Octoberpriorsnumbers<-subset(Octoberpriors2, select = c('CURRACN', 'TEST_NAME', 'REPORT_STATE', "COLLDATE.x" ))
+names(Octoberpriorsnumbers)[names(Octoberpriorsnumbers) == 'COLLDATE.x'] <- "COLLECTION_DATE"
+if(nrow(Octoberpriorsnumbers) > 0){
+  kable(Octoberpriorsnumbers, caption = 'Accession Numbers of Cases Positive for the First Time in October')
+}
+
+# accession numbers of old cases
+Octoberpriors3<- filter(Octoberpriors, priorpos == "Yes") #Pull out the old positives
+Octoberpriorsnumbers2<-subset(Octoberpriors3, select = c('CURRACN', 'TEST_NAME', 'REPORT_STATE', "COLLDATE.x", "Date of First Positive" ))
+names(Octoberpriorsnumbers2)[names(Octoberpriorsnumbers2) == 'COLLDATE.x'] <- "COLLECTION_DATE"
+names(Octoberpriorsnumbers2)[names(Octoberpriorsnumbers2) == 'Date of First Positive'] <- "FIRST_POSITIVE"
+if(nrow(Octoberpriorsnumbers2) > 0){
+  kable(Octoberpriorsnumbers2, caption = 'Accession Numbers of Cases Positive in the Past')
+}
+
+
+# Add to the running list of all positives ever and export the updated list
+Octoberpriors2$'ID' <- paste(Octoberpriors2$'FNAME.x', Octoberpriors2$'LNAME.x', Octoberpriors2$'DOB.x', sep="-")
+names(Octoberpriors2)[names(Octoberpriors2) == 'FNAME.x'] <- "FNAME"
+names(Octoberpriors2)[names(Octoberpriors2) == 'LNAME.x'] <- "LNAME"
+names(Octoberpriors2)[names(Octoberpriors2) == 'DOB.x'] <- "DOB"
+names(Octoberpriors2)[names(Octoberpriors2) == 'COLLDATE.x'] <- "COLLDATE"
+Octobernewfirstpositive <- Octoberpriors2 %>% select(c('FNAME','LNAME', 'DOB', 'COLLDATE', 'ID'))
+firsttbpositivesOctober <- bind_rows(firsttbpositivesmay, Octobernewfirstpositive)
+write_xlsx(firsttbpositivesOctober,
+           path = "J:/TB/Monthly Numbers/Ever Positive/All Positive EVER October 2022.xlsx")
+
+```
+
+## Turnaround Times
+```{r October tat, echo=FALSE , warning=FALSE, message=FALSE, results = "asis", type = 'latex'}
+
+# format dates
+tbmonth_2_October$RECDATE <- as.POSIXct(tbmonth_2_October$RECDATE, format="%m/%d/%Y", tz = "UTC")
+tbmonth_2_October$RESULT_DATE <- as.POSIXct(tbmonth_2_October$RESULT_DATE, format="%m/%d/%Y", tz = "UTC")
+
+#Calculate TAT
+tbmonth_2_October$TAT <- as.numeric(difftime(tbmonth_2_October$RESULT_DATE, tbmonth_2_October$RECDATE, units = "days"))
+
+# Find means and graph
+means <- aggregate(TAT ~  TEST_NAME, tbmonth_2_October, function(x) c(mean = round(mean(x, na.rm=TRUE), 2)))
+ggplot(tbmonth_2_October, aes(x=TEST_NAME, y=TAT, fill=TEST_NAME)) + theme_bw() + 
+  geom_boxplot()+ scale_fill_viridis(discrete=TRUE, name = "Test") + 
+  xlab("Test") + ylab("Turnaround Time (days)") + theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) +
+  geom_text(data = means, aes(label = TAT, y = 120)) + scale_y_continuous(breaks = seq(0, 150, by = 10)) +
+  labs(title = "Receipt to Result Turnaround Times by Test", subtitle = "For samples received in October")
+
+
+intsOctober <- tbmonth_2_October %>% filter(TEST_NAME == "INTSMEAR")
+intsOctober$TAT <- as.factor(intsOctober$TAT)
+summary(freqlist(~ TAT, data = intsOctober))
+
+intsall2022 <- tbmonth_1 %>% subset(tbmonth_1$testyr == 2022) %>% filter(TEST_NAME=="INTSMEAR")
+intsall2022$RECDATE <- as.POSIXct(intsall2022$RECDATE, format="%m/%d/%Y", tz = "UTC")
+intsall2022$RESULT_DATE <- as.POSIXct(intsall2022$RESULT_DATE, format="%m/%d/%Y", tz = "UTC")
+intsall2022$TAT <- as.numeric(difftime(intsall2022$RESULT_DATE, intsall2022$RECDATE, units = "days"))
+intsall2022$TAT <- as.factor(intsall2022$TAT)
+summary(freqlist(~ TAT, data = intsall2022))
+```
+
+\newpage
+
+
+\newpage
+ 
+# November
+
+## Test Summaries
+
+```{r November tm tables, echo=FALSE , warning=FALSE, message=FALSE, results = "asis", type = 'latex'}
+
+#Limit to November
+tbmonth_2_November<-subset(tbmonth_1, tbmonth_1$testmo == 11)
+
+#Smear samples 
+tbmonth_smear_November<-subset(tbmonth_2_November, tbmonth_2_November$TEST_NAME == 'INTSMEAR')
+
+#Tabulate Smear Counts by testing procedure
+tbmonth_smear_November<-as.data.frame(table(tbmonth_smear_November$TESTPROC, tbmonth_smear_November$RESULT))
+
+#Reshape
+tb_smear_1_November<-reshape(tbmonth_smear_November, timevar = 'Var1', idvar = 'Var2', direction = 'wide')
+
+#Rename columns
+names(tb_smear_1_November)[1]<-'Result'
+names(tb_smear_1_November)[2]<-'Flourochrome'
+names(tb_smear_1_November)[3]<-'Kinyoun'
+
+#Add totals
+tb_smear_2_November<-tb_smear_1_November%>%
+  adorn_totals(c("row","col"))
+rownames(tb_smear_2_November)<-NULL
+
+#kable
+kable(tb_smear_2_November, caption = 'November Initial Smear by Testing Procedure')
+```
+
+
+```{r November kt tables, echo=FALSE , warning=FALSE, message=FALSE, results = "asis", type = 'latex'}
+
+#Pull out Kinyouns 
+tbmonth_ky_November<-subset(tbmonth_2_November, tbmonth_2_November$TEST_NAME == 'INTSMEAR' & tbmonth_2_November$TESTPROC == 'Kinyoun')
+
+#Subset Columns to Accession Number, Test, and Testing Procedure
+tbmonth_ky_sub_November<-subset(tbmonth_ky_November, select = c('CURRACN', 'TEST_NAME', 'TESTPROC'))
+
+#Tabulate
+if(nrow(tbmonth_ky_sub_November) > 0){
+  kable(tbmonth_ky_sub_November, caption = 'November Kinyoun Test Accession Numbers')
+}
+
+```
+
+## Discordant Results
+
+```{r November discordant results, echo=FALSE , warning=FALSE, message=FALSE, results = "asis", type = 'latex'}
+
+#Select Accession number, test, and testing result
+tbmonth_2_November2 <- tbmonth_2_November %>% select(c(CURRACN, TEST_NAME, RESULT))
+
+#Make wide table
+discordantsNovemberwide <- pivot_wider(tbmonth_2_November2, names_from = TEST_NAME, 
+                                   values_from = RESULT, values_fn = list) 
+discordantsNovemberwide <- unnest(discordantsNovemberwide, cols = c(ORGANISM_FOUND, CULTURE, SUSCEPTIBILITY, NAAT, INTSMEAR))
+
+#Turn into factors - positive, negative, not done
+discordantsNovemberwide$INTSMEAR <- as.factor(discordantsNovemberwide$INTSMEAR)
+levels(discordantsNovemberwide$INTSMEAR) <- list("POSITIVE" = 'AFB FOUND', "NEGATIVE" = 'AFB NOT FOUND', 'NOT DONE' = NULL)
+
+discordantsNovemberwide$NAAT <- as.factor(discordantsNovemberwide$NAAT)
+levels(discordantsNovemberwide$NAAT) <- list("POSITIVE" = 'POS', "NEGATIVE" = 'NEG', 'NOT DONE' = NULL)
+discordantsNovemberwide$CULTURE <- as.factor(discordantsNovemberwide$CULTURE)
+
+
+#Create variable for smear + culture -
+discordantsNovemberwide$smearPcultureN <- NA 
+discordantsNovemberwide$smearPcultureN <- ifelse(discordantsNovemberwide$INTSMEAR =="POSITIVE" & discordantsNovemberwide$CULTURE == "NEGATIVE", "discordant", discordantsNovemberwide$smearPcultureN)
+
+NovembersmearPcultureN <- discordantsNovemberwide %>% filter(smearPcultureN == "discordant")
+discordantsNovember1<-subset(NovembersmearPcultureN, select = c('CURRACN', 'INTSMEAR', 'CULTURE', 'NAAT'))
+if(nrow(discordantsNovember1) > 0){
+  kable(discordantsNovember1, caption = 'Smear + and Culture -')
+}
+
+#Create variable for smear - culture +
+discordantsNovemberwide$smearNcultureP <- NA 
+discordantsNovemberwide$smearNcultureP <- ifelse(discordantsNovemberwide$CULTURE =="POSITIVE" & discordantsNovemberwide$INTSMEAR == "NEGATIVE", "discordant", discordantsNovemberwide$smearNcultureP)
+
+NovembersmearNcultureP <- discordantsNovemberwide %>% filter(smearNcultureP == "discordant")
+discordantsNovember2<-subset(NovembersmearNcultureP, select = c('CURRACN', 'INTSMEAR', 'CULTURE', 'NAAT'))
+if(nrow(discordantsNovember2) > 0){
+  kable(discordantsNovember2, caption = 'Smear - and Culture +')
+}
+
+#Create variable for NAAT - culture +
+discordantsNovemberwide$naatNcultureP <- NA 
+discordantsNovemberwide$naatNcultureP <- ifelse(discordantsNovemberwide$CULTURE =="POSITIVE" & discordantsNovemberwide$NAAT == "NEGATIVE", "discordant", discordantsNovemberwide$naatNcultureP)
+
+NovembernaatNcultureP <- discordantsNovemberwide %>% filter(naatNcultureP == "discordant")
+discordantsNovember3<-subset(NovembernaatNcultureP, select = c('CURRACN', 'INTSMEAR', 'CULTURE', 'NAAT'))
+if(nrow(discordantsNovember3) > 0){
+  kable(discordantsNovember3, caption = 'NAAT - and Culture +')
+}
+  
+```
+
+## Positive Reports
+
+```{r November old or new?, echo=FALSE , warning=FALSE, message=FALSE, results = "asis", type = 'latex'}
+
+#pull in our log of everyone's first appearance
+firsttbpositivesmay<-("J:/TB/Monthly Numbers/Ever Positive/All Positive EVER October 2022.xlsx") 
+firsttbpositivesmay<-read_excel(firsttbpositivesmay)
+
+# check this month's results against the log
+tbmonth_2_November$ID <- paste(tbmonth_2_November$FNAME, tbmonth_2_November$LNAME, tbmonth_2_November$DOB, sep="-") #match the ID from the first appearance log
+tbmonth_2_November$priorpos <- ifelse(is.na(match(tbmonth_2_November$ID, firsttbpositivesmay$ID)),"No", "Yes") #if there's a match "priorpos" says "yes"
+Novemberpriors<- merge(tbmonth_2_November, firsttbpositivesmay, by.x = "ID", by.y = "ID", all.x = TRUE) # merge together the log and the data
+Novemberpriors$priorpos <- ifelse(Novemberpriors$COLLDATE.y==Novemberpriors$COLLDATE.x | 
+                                 month(as.POSIXlt(Novemberpriors$COLLDATE.y, format="%m/%d/%Y")) ==month(as.POSIXlt(Novemberpriors$COLLDATE.x, format="%m/%d/%Y")), 
+                               "No", Novemberpriors$priorpos) #if the data's date is the same as the log's (aka this appearance is actually the first appearance) correct it to "No
+Novemberpriors$priorpos <- ifelse(is.na(Novemberpriors$COLLDATE.y)==TRUE, "No", Novemberpriors$priorpos) #if the data's date is null correct it to "No
+Novemberpriors$`Date of First Positive` <- ifelse(Novemberpriors$priorpos=="Yes", Novemberpriors$COLLDATE.y, NA) #retrieve the date of first positive
+
+Novemberpriors <- Novemberpriors[!duplicated(Novemberpriors$ID), ] #dump dupes
+Novemberpriors<- filter(Novemberpriors, RESULT == "M. TUBERCULOSIS COMPLEX") #dump anything other than M tb complex
+
+
+#tabulate 
+Novemberoldornew<-as.data.frame(table(Novemberpriors$priorpos))
+names(Novemberoldornew)[1]<-'Appeared in the Past?'
+names(Novemberoldornew)[2]<-'Count'
+kable(Novemberoldornew, caption = 'Positive Results by New or Old Case')
+
+# accession numbers of new cases
+Novemberpriors2<- filter(Novemberpriors, priorpos == "No") #Pull out the  positives
+Novemberpriorsnumbers<-subset(Novemberpriors2, select = c('CURRACN', 'TEST_NAME', 'REPORT_STATE', "COLLDATE.x" ))
+names(Novemberpriorsnumbers)[names(Novemberpriorsnumbers) == 'COLLDATE.x'] <- "COLLECTION_DATE"
+if(nrow(Novemberpriorsnumbers) > 0){
+  kable(Novemberpriorsnumbers, caption = 'Accession Numbers of Cases Positive for the First Time in November')
+}
+
+# accession numbers of old cases
+Novemberpriors3<- filter(Novemberpriors, priorpos == "Yes") #Pull out the old positives
+Novemberpriorsnumbers2<-subset(Novemberpriors3, select = c('CURRACN', 'TEST_NAME', 'REPORT_STATE', "COLLDATE.x", "Date of First Positive" ))
+names(Novemberpriorsnumbers2)[names(Novemberpriorsnumbers2) == 'COLLDATE.x'] <- "COLLECTION_DATE"
+names(Novemberpriorsnumbers2)[names(Novemberpriorsnumbers2) == 'Date of First Positive'] <- "FIRST_POSITIVE"
+if(nrow(Novemberpriorsnumbers2) > 0){
+  kable(Novemberpriorsnumbers2, caption = 'Accession Numbers of Cases Positive in the Past')
+}
+
+
+# Add to the running list of all positives ever and export the updated list
+Novemberpriors2$'ID' <- paste(Novemberpriors2$'FNAME.x', Novemberpriors2$'LNAME.x', Novemberpriors2$'DOB.x', sep="-")
+names(Novemberpriors2)[names(Novemberpriors2) == 'FNAME.x'] <- "FNAME"
+names(Novemberpriors2)[names(Novemberpriors2) == 'LNAME.x'] <- "LNAME"
+names(Novemberpriors2)[names(Novemberpriors2) == 'DOB.x'] <- "DOB"
+names(Novemberpriors2)[names(Novemberpriors2) == 'COLLDATE.x'] <- "COLLDATE"
+Novembernewfirstpositive <- Novemberpriors2 %>% select(c('FNAME','LNAME', 'DOB', 'COLLDATE', 'ID'))
+firsttbpositivesNovember <- bind_rows(firsttbpositivesmay, Novembernewfirstpositive)
+write_xlsx(firsttbpositivesNovember,
+           path = "J:/TB/Monthly Numbers/Ever Positive/All Positive EVER November 2022.xlsx")
+
+```
+
+## Turnaround Times
+```{r November tat, echo=FALSE , warning=FALSE, message=FALSE, results = "asis", type = 'latex'}
+
+# format dates
+tbmonth_2_November$RECDATE <- as.POSIXct(tbmonth_2_November$RECDATE, format="%m/%d/%Y", tz = "UTC")
+tbmonth_2_November$RESULT_DATE <- as.POSIXct(tbmonth_2_November$RESULT_DATE, format="%m/%d/%Y", tz = "UTC")
+
+#Calculate TAT
+tbmonth_2_November$TAT <- as.numeric(difftime(tbmonth_2_November$RESULT_DATE, tbmonth_2_November$RECDATE, units = "days"))
+
+# Find means and graph
+means <- aggregate(TAT ~  TEST_NAME, tbmonth_2_November, function(x) c(mean = round(mean(x, na.rm=TRUE), 2)))
+ggplot(tbmonth_2_November, aes(x=TEST_NAME, y=TAT, fill=TEST_NAME)) + theme_bw() + 
+  geom_boxplot()+ scale_fill_viridis(discrete=TRUE, name = "Test") + 
+  xlab("Test") + ylab("Turnaround Time (days)") + theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) +
+  geom_text(data = means, aes(label = TAT, y = 120)) + scale_y_continuous(breaks = seq(0, 150, by = 10)) +
+  labs(title = "Receipt to Result Turnaround Times by Test", subtitle = "For samples received in November")
+
+
+intsNovember <- tbmonth_2_November %>% filter(TEST_NAME == "INTSMEAR")
+intsNovember$TAT <- as.factor(intsNovember$TAT)
+summary(freqlist(~ TAT, data = intsNovember))
+
+intsall2022 <- tbmonth_1 %>% subset(tbmonth_1$testyr == 2022) %>% filter(TEST_NAME=="INTSMEAR")
+intsall2022$RECDATE <- as.POSIXct(intsall2022$RECDATE, format="%m/%d/%Y", tz = "UTC")
+intsall2022$RESULT_DATE <- as.POSIXct(intsall2022$RESULT_DATE, format="%m/%d/%Y", tz = "UTC")
+intsall2022$TAT <- as.numeric(difftime(intsall2022$RESULT_DATE, intsall2022$RECDATE, units = "days"))
+intsall2022$TAT <- as.factor(intsall2022$TAT)
+summary(freqlist(~ TAT, data = intsall2022))
+```
+
+\newpage
+
+# December
+
+## Test Summaries
+
+```{r December tm tables, echo=FALSE , warning=FALSE, message=FALSE, results = "asis", type = 'latex'}
+
+#Limit to December
+tbmonth_2_December<-subset(tbmonth_1, tbmonth_1$testmo == 12)
+
+#Smear samples 
+tbmonth_smear_December<-subset(tbmonth_2_December, tbmonth_2_December$TEST_NAME == 'INTSMEAR')
+
+#Tabulate Smear Counts by testing procedure
+tbmonth_smear_December<-as.data.frame(table(tbmonth_smear_December$TESTPROC, tbmonth_smear_December$RESULT))
+
+#Reshape
+tb_smear_1_December<-reshape(tbmonth_smear_December, timevar = 'Var1', idvar = 'Var2', direction = 'wide')
+
+#Rename columns
+names(tb_smear_1_December)[1]<-'Result'
+names(tb_smear_1_December)[2]<-'Flourochrome'
+names(tb_smear_1_December)[3]<-'Kinyoun'
+
+#Add totals
+tb_smear_2_December<-tb_smear_1_December%>%
+  adorn_totals(c("row","col"))
+rownames(tb_smear_2_December)<-NULL
+
+#kable
+kable(tb_smear_2_December, caption = 'December Initial Smear by Testing Procedure')
+```
+
+
+```{r December kt tables, echo=FALSE , warning=FALSE, message=FALSE, results = "asis", type = 'latex'}
+
+#Pull out Kinyouns 
+tbmonth_ky_December<-subset(tbmonth_2_December, tbmonth_2_December$TEST_NAME == 'INTSMEAR' & tbmonth_2_December$TESTPROC == 'Kinyoun')
+
+#Subset Columns to Accession Number, Test, and Testing Procedure
+tbmonth_ky_sub_December<-subset(tbmonth_ky_December, select = c('CURRACN', 'TEST_NAME', 'TESTPROC'))
+
+#Tabulate
+if(nrow(tbmonth_ky_sub_December) > 0){
+  kable(tbmonth_ky_sub_December, caption = 'December Kinyoun Test Accession Numbers')
+}
+
+```
+
+## Discordant Results
+
+```{r December discordant results, echo=FALSE , warning=FALSE, message=FALSE, results = "asis", type = 'latex'}
+
+#Select Accession number, test, and testing result
+tbmonth_2_December2 <- tbmonth_2_December %>% select(c(CURRACN, TEST_NAME, RESULT))
+
+#Make wide table
+discordantsDecemberwide <- pivot_wider(tbmonth_2_December2, names_from = TEST_NAME, 
+                                   values_from = RESULT, values_fn = list) 
+discordantsDecemberwide <- unnest(discordantsDecemberwide, cols = c(ORGANISM_FOUND, CULTURE, SUSCEPTIBILITY, NAAT, INTSMEAR))
+
+#Turn into factors - positive, negative, not done
+discordantsDecemberwide$INTSMEAR <- as.factor(discordantsDecemberwide$INTSMEAR)
+levels(discordantsDecemberwide$INTSMEAR) <- list("POSITIVE" = 'AFB FOUND', "NEGATIVE" = 'AFB NOT FOUND', 'NOT DONE' = NULL)
+
+discordantsDecemberwide$NAAT <- as.factor(discordantsDecemberwide$NAAT)
+levels(discordantsDecemberwide$NAAT) <- list("POSITIVE" = 'POS', "NEGATIVE" = 'NEG', 'NOT DONE' = NULL)
+discordantsDecemberwide$CULTURE <- as.factor(discordantsDecemberwide$CULTURE)
+
+
+#Create variable for smear + culture -
+discordantsDecemberwide$smearPcultureN <- NA 
+discordantsDecemberwide$smearPcultureN <- ifelse(discordantsDecemberwide$INTSMEAR =="POSITIVE" & discordantsDecemberwide$CULTURE == "NEGATIVE", "discordant", discordantsDecemberwide$smearPcultureN)
+
+DecembersmearPcultureN <- discordantsDecemberwide %>% filter(smearPcultureN == "discordant")
+discordantsDecember1<-subset(DecembersmearPcultureN, select = c('CURRACN', 'INTSMEAR', 'CULTURE', 'NAAT'))
+if(nrow(discordantsDecember1) > 0){
+  kable(discordantsDecember1, caption = 'Smear + and Culture -')
+}
+
+#Create variable for smear - culture +
+discordantsDecemberwide$smearNcultureP <- NA 
+discordantsDecemberwide$smearNcultureP <- ifelse(discordantsDecemberwide$CULTURE =="POSITIVE" & discordantsDecemberwide$INTSMEAR == "NEGATIVE", "discordant", discordantsDecemberwide$smearNcultureP)
+
+DecembersmearNcultureP <- discordantsDecemberwide %>% filter(smearNcultureP == "discordant")
+discordantsDecember2<-subset(DecembersmearNcultureP, select = c('CURRACN', 'INTSMEAR', 'CULTURE', 'NAAT'))
+if(nrow(discordantsDecember2) > 0){
+  kable(discordantsDecember2, caption = 'Smear - and Culture +')
+}
+
+#Create variable for NAAT - culture +
+discordantsDecemberwide$naatNcultureP <- NA 
+discordantsDecemberwide$naatNcultureP <- ifelse(discordantsDecemberwide$CULTURE =="POSITIVE" & discordantsDecemberwide$NAAT == "NEGATIVE", "discordant", discordantsDecemberwide$naatNcultureP)
+
+DecembernaatNcultureP <- discordantsDecemberwide %>% filter(naatNcultureP == "discordant")
+discordantsDecember3<-subset(DecembernaatNcultureP, select = c('CURRACN', 'INTSMEAR', 'CULTURE', 'NAAT'))
+if(nrow(discordantsDecember3) > 0){
+  kable(discordantsDecember3, caption = 'NAAT - and Culture +')
+}
+  
+```
+
+## Positive Reports
+
+```{r December old or new?, echo=FALSE , warning=FALSE, message=FALSE, results = "asis", type = 'latex'}
+
+#pull in our log of everyone's first appearance
+firsttbpositivesmay<-("J:/TB/Monthly Numbers/Ever Positive/All Positive EVER November 2022.xlsx") 
+firsttbpositivesmay<-read_excel(firsttbpositivesmay)
+
+# check this month's results against the log
+tbmonth_2_December$ID <- paste(tbmonth_2_December$FNAME, tbmonth_2_December$LNAME, tbmonth_2_December$DOB, sep="-") #match the ID from the first appearance log
+tbmonth_2_December$priorpos <- ifelse(is.na(match(tbmonth_2_December$ID, firsttbpositivesmay$ID)),"No", "Yes") #if there's a match "priorpos" says "yes"
+Decemberpriors<- merge(tbmonth_2_December, firsttbpositivesmay, by.x = "ID", by.y = "ID", all.x = TRUE) # merge together the log and the data
+Decemberpriors$priorpos <- ifelse(Decemberpriors$COLLDATE.y==Decemberpriors$COLLDATE.x | 
+                                 month(as.POSIXlt(Decemberpriors$COLLDATE.y, format="%m/%d/%Y")) ==month(as.POSIXlt(Decemberpriors$COLLDATE.x, format="%m/%d/%Y")), 
+                               "No", Decemberpriors$priorpos) #if the data's date is the same as the log's (aka this appearance is actually the first appearance) correct it to "No
+Decemberpriors$priorpos <- ifelse(is.na(Decemberpriors$COLLDATE.y)==TRUE, "No", Decemberpriors$priorpos) #if the data's date is null correct it to "No
+Decemberpriors$`Date of First Positive` <- ifelse(Decemberpriors$priorpos=="Yes", Decemberpriors$COLLDATE.y, NA) #retrieve the date of first positive
+
+Decemberpriors <- Decemberpriors[!duplicated(Decemberpriors$ID), ] #dump dupes
+Decemberpriors<- filter(Decemberpriors, RESULT == "M. TUBERCULOSIS COMPLEX") #dump anything other than M tb complex
+
+
+#tabulate 
+Decemberoldornew<-as.data.frame(table(Decemberpriors$priorpos))
+names(Decemberoldornew)[1]<-'Appeared in the Past?'
+names(Decemberoldornew)[2]<-'Count'
+kable(Decemberoldornew, caption = 'Positive Results by New or Old Case')
+
+# accession numbers of new cases
+Decemberpriors2<- filter(Decemberpriors, priorpos == "No") #Pull out the  positives
+Decemberpriorsnumbers<-subset(Decemberpriors2, select = c('CURRACN', 'TEST_NAME', 'REPORT_STATE', "COLLDATE.x" ))
+names(Decemberpriorsnumbers)[names(Decemberpriorsnumbers) == 'COLLDATE.x'] <- "COLLECTION_DATE"
+if(nrow(Decemberpriorsnumbers) > 0){
+  kable(Decemberpriorsnumbers, caption = 'Accession Numbers of Cases Positive for the First Time in December')
+}
+
+# accession numbers of old cases
+Decemberpriors3<- filter(Decemberpriors, priorpos == "Yes") #Pull out the old positives
+Decemberpriorsnumbers2<-subset(Decemberpriors3, select = c('CURRACN', 'TEST_NAME', 'REPORT_STATE', "COLLDATE.x", "Date of First Positive" ))
+names(Decemberpriorsnumbers2)[names(Decemberpriorsnumbers2) == 'COLLDATE.x'] <- "COLLECTION_DATE"
+names(Decemberpriorsnumbers2)[names(Decemberpriorsnumbers2) == 'Date of First Positive'] <- "FIRST_POSITIVE"
+if(nrow(Decemberpriorsnumbers2) > 0){
+  kable(Decemberpriorsnumbers2, caption = 'Accession Numbers of Cases Positive in the Past')
+}
+
+
+# Add to the running list of all positives ever and export the updated list
+Decemberpriors2$'ID' <- paste(Decemberpriors2$'FNAME.x', Decemberpriors2$'LNAME.x', Decemberpriors2$'DOB.x', sep="-")
+names(Decemberpriors2)[names(Decemberpriors2) == 'FNAME.x'] <- "FNAME"
+names(Decemberpriors2)[names(Decemberpriors2) == 'LNAME.x'] <- "LNAME"
+names(Decemberpriors2)[names(Decemberpriors2) == 'DOB.x'] <- "DOB"
+names(Decemberpriors2)[names(Decemberpriors2) == 'COLLDATE.x'] <- "COLLDATE"
+Decembernewfirstpositive <- Decemberpriors2 %>% select(c('FNAME','LNAME', 'DOB', 'COLLDATE', 'ID'))
+firsttbpositivesDecember <- bind_rows(firsttbpositivesmay, Decembernewfirstpositive)
+write_xlsx(firsttbpositivesDecember,
+           path = "J:/TB/Monthly Numbers/Ever Positive/All Positive EVER December 2022.xlsx")
+
+```
+
+## Turnaround Times
+```{r December tat, echo=FALSE , warning=FALSE, message=FALSE, results = "asis", type = 'latex'}
+
+# format dates
+tbmonth_2_December$RECDATE <- as.POSIXct(tbmonth_2_December$RECDATE, format="%m/%d/%Y", tz = "UTC")
+tbmonth_2_December$RESULT_DATE <- as.POSIXct(tbmonth_2_December$RESULT_DATE, format="%m/%d/%Y", tz = "UTC")
+
+#Calculate TAT
+tbmonth_2_December$TAT <- as.numeric(difftime(tbmonth_2_December$RESULT_DATE, tbmonth_2_December$RECDATE, units = "days"))
+
+# Find means and graph
+means <- aggregate(TAT ~  TEST_NAME, tbmonth_2_December, function(x) c(mean = round(mean(x, na.rm=TRUE), 2)))
+ggplot(tbmonth_2_December, aes(x=TEST_NAME, y=TAT, fill=TEST_NAME)) + theme_bw() + 
+  geom_boxplot()+ scale_fill_viridis(discrete=TRUE, name = "Test") + 
+  xlab("Test") + ylab("Turnaround Time (days)") + theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) +
+  geom_text(data = means, aes(label = TAT, y = 120)) + scale_y_continuous(breaks = seq(0, 150, by = 10)) +
+  labs(title = "Receipt to Result Turnaround Times by Test", subtitle = "For samples received in December")
+
+
+intsDecember <- tbmonth_2_December %>% filter(TEST_NAME == "INTSMEAR")
+intsDecember$TAT <- as.factor(intsDecember$TAT)
+summary(freqlist(~ TAT, data = intsDecember))
+
+intsall2022 <- tbmonth_1 %>% subset(tbmonth_1$testyr == 2022) %>% filter(TEST_NAME=="INTSMEAR")
+intsall2022$RECDATE <- as.POSIXct(intsall2022$RECDATE, format="%m/%d/%Y", tz = "UTC")
+intsall2022$RESULT_DATE <- as.POSIXct(intsall2022$RESULT_DATE, format="%m/%d/%Y", tz = "UTC")
+intsall2022$TAT <- as.numeric(difftime(intsall2022$RESULT_DATE, intsall2022$RECDATE, units = "days"))
+intsall2022$TAT <- as.factor(intsall2022$TAT)
+summary(freqlist(~ TAT, data = intsall2022))
+```
+
+\newpage
+
+
+\blandscape
+
+# Preliminary Positives Not Finalized After 60 Days
+
+```{r sixty-plus, echo=FALSE , warning=FALSE, message=FALSE, results = "asis", type = 'latex'}
+
+# Load in new data and filter to pos
+tb2020on2<-("J:/TB/Monthly Numbers/2022/12 December/Data/TB Master Report.xlsx")
+tb2020on2<-read_excel(tb2020on2, skip = 1)
+tb2020on2prelim2<- filter(tb2020on2, REPORT_STATE == "PRELIMINARY") #Pull out the old positives
+tb2020on2prelim2<- filter(tb2020on2prelim2, RESULT != "AFB NOT FOUND" & RESULT !="NEG") #Pull out the old positives
+ 
+# find ye olde preliminaries
+tb2020on2prelim2$RESULT_DATE <- as.POSIXct(tb2020on2prelim2$RESULT_DATE, format="%m/%d/%Y", tz = "UTC") #date of result
+tb2020on2prelim2$ReportAge <- as.numeric(difftime(Sys.Date(), tb2020on2prelim2$RESULT_DATE, tz = "UTC", units="days")) #Age
+tb2020on2prelim2 <- tb2020on2prelim2[order(-tb2020on2prelim2$ReportAge),] # sort by age - oldest first
+tb2020on2prelim2<- filter(tb2020on2prelim2, ReportAge>45) #Pull out the old positives
+
+# print accession numbers
+tb2020on2prelim2 <- subset(tb2020on2prelim2, select = c('CURRACN', 'TEST_NAME', "RESULT", 'RESULT_DATE', "ReportAge"))
+names(tb2020on2prelim2)[names(tb2020on2prelim2) == 'RESULT_DATE'] <- "ReportDate"
+names(tb2020on2prelim2)[names(tb2020on2prelim2) == 'TEST_NAME'] <- "Test"
+
+if(nrow(tb2020on2prelim2) > 0){
+  kable(tb2020on2prelim2, caption = 'Positive Tests >60 Days Old Still Marked "Preliminary" - 2020 to Now')
+}
+
+write_xlsx(tb2020on2prelim2,
+           path = "J:/TB/Monthly Numbers/2022/12 December/Reports/60 plus days old - 01-17.xlsx")
+```
+
+An Excel spreadsheet of these lists can be found at J:/TB/Monthly Numbers/2022/12 December/Reports/60 plus days old - 01-17.xlsx.
+
+
+
+
+\elandscape
+
+\newpage
+# Year-to-Date Summaries
+
+## NAAT tests
+```{r naat tables, echo=FALSE , warning=FALSE, message=FALSE, results = "asis", type = 'latex'}
+
+#Pull out the NAATs
+tbmonth_NAAT<-subset(tbmonth_1, tbmonth_1$TEST_NAME == 'NAAT')
+
+#Tabulate smear counts by month and result
+tb_naat<-as.data.frame(table(tbmonth_NAAT$testmo, tbmonth_NAAT$RESULT))
+tb_naat$Var1<-month.abb[tb_naat$Var1]
+
+#Widen
+tb_naat_1<-reshape(tb_naat, timevar = 'Var1', idvar = 'Var2', direction = 'wide')
+
+#Rename columns
+names(tb_naat_1) = sub("Freq.","",names(tb_naat_1))
+names(tb_naat_1)[1]<-'Result'
+tb_naat_1 <- tb_naat_1[1:(length(tb_naat_1)-1)] #drops current month
+
+#Addtotals
+tb_naat_2<-tb_naat_1%>%
+  adorn_totals(c("row","col"))
+rownames(tb_naat_2)<-NULL
+
+#wheeeeeee easy peasy :)
+kable(tb_naat_2, caption = 'January-December NAAT Testing Results')
+
+```
+
+
+## Organism Found to Susceptibility Test TAT
+
+```{r of susc tat, echo=FALSE , warning=FALSE, message=FALSE, results = "asis", type = 'latex'}
+
+# Filter to susceptibility tests and organism found tests
+tbmonth_1_susc <- subset(tbmonth_1, select = c('CURRACN', 'TEST_NAME', 'RESULT_DATE', 'COLLDATE')) # cut down to accession number, test type, dates
+tbmonth_susc <- tbmonth_1_susc %>% filter(TEST_NAME == "SUSCEPTIBILITY") # filter only to organism_found and susceptibility tests
+tbmonth_orgf <- tbmonth_1_susc %>% filter(TEST_NAME == "ORGANISM_FOUND")
+
+# Rotate each and merge
+tbmonth_orgf2 <- tbmonth_orgf %>%
+  pivot_wider(
+    names_from = TEST_NAME,
+    values_from = c(RESULT_DATE), values_fn = list
+  )
+tbmonth_orgf2$ORGANISM_FOUND[tbmonth_orgf2$CURRACN == "22TB01682" ]<-"02/03/2022" # something wrong with this one - I will replace with its earlier date
+
+tbmonth_susc2 <- tbmonth_susc %>%
+  pivot_wider(
+    names_from = TEST_NAME,
+    values_from = c(RESULT_DATE), values_fn = list
+  )
+tbmonth_orgf_susc <- merge(tbmonth_orgf2, tbmonth_susc2, by=c("CURRACN","COLLDATE"), no.dups = TRUE)
+
+#find the month number and calculate the difference between the 2 times
+tbmonth_orgf_susc$SUSCEPTIBILITY <- as.POSIXct(as.character(tbmonth_orgf_susc$SUSCEPTIBILITY), format="%m/%d/%Y", tz = "UTC")
+tbmonth_orgf_susc$ORGANISM_FOUND <- as.POSIXct(as.character(tbmonth_orgf_susc$ORGANISM_FOUND), format="%m/%d/%Y", tz = "UTC")
+tbmonth_orgf_susc$COLLDATE <- as.POSIXct(as.character(tbmonth_orgf_susc$COLLDATE), format="%m/%d/%Y", tz = "UTC")
+tbmonth_orgf_susc$TAT <- as.numeric(difftime(tbmonth_orgf_susc$SUSCEPTIBILITY, tbmonth_orgf_susc$ORGANISM_FOUND, units = "days")) # calculate TATs - organism_found to susceptibility
+tbmonth_orgf_susc$testmo<-month(tbmonth_orgf_susc$ORGANISM_FOUND)
+
+#this took soooooo long :(
+table <- tbmonth_orgf_susc %>% group_by(testmo) %>%
+  dplyr::summarise(Count=n(), 
+            Mean.TAT=round(mean(TAT, na.rm=TRUE),digits=1))
+kable(table, caption="Mean Organism Found to Susceptibility Test TAT by Month", col.names = c("Month","Number of Samples with Both Tests","Mean TAT (days)"))
+
+
+
+```
+
+## Organism Found to NAAT Test TAT
+
+```{r of naat tat, echo=FALSE , warning=FALSE, message=FALSE, results = "asis", type = 'latex'}
+
+# Filter to susceptibility tests and organism found tests
+tbmonth_1_susc <- subset(tbmonth_1, select = c('CURRACN', 'TEST_NAME', 'RESULT_DATE', 'COLLDATE')) # cut down to accession number, test type, dates
+tbmonth_naat <- tbmonth_1_susc %>% filter(TEST_NAME == "NAAT") # filter only to organism_found and susceptibility tests
+tbmonth_orgf <- tbmonth_1_susc %>% filter(TEST_NAME == "ORGANISM_FOUND")
+
+# Rotate each and merge
+tbmonth_orgf2 <- tbmonth_orgf %>%
+  pivot_wider(
+    names_from = TEST_NAME,
+    values_from = c(RESULT_DATE), values_fn = list
+  )
+tbmonth_orgf2$ORGANISM_FOUND[tbmonth_orgf2$CURRACN == "22TB01682" ]<-"02/03/2022" # something wrong with this one - I will replace with its earlier date
+
+tbmonth_naat2 <- tbmonth_naat %>%
+  pivot_wider(
+    names_from = TEST_NAME,
+    values_from = c(RESULT_DATE), values_fn = list
+  )
+tbmonth_orgf_naat <- merge(tbmonth_orgf2, tbmonth_naat2, by=c("CURRACN","COLLDATE"), no.dups = TRUE)
+#find the month number and calculate the difference between the 2 times
+tbmonth_orgf_naat$NAAT <- as.POSIXct(as.character(tbmonth_orgf_naat$NAAT), format="%m/%d/%Y", tz = "UTC")
+tbmonth_orgf_naat$ORGANISM_FOUND <- as.POSIXct(as.character(tbmonth_orgf_naat$ORGANISM_FOUND), format="%m/%d/%Y", tz = "UTC")
+tbmonth_orgf_naat$COLLDATE <- as.POSIXct(as.character(tbmonth_orgf_naat$COLLDATE), format="%m/%d/%Y", tz = "UTC")
+tbmonth_orgf_naat$TAT <- -1*as.numeric(difftime(tbmonth_orgf_naat$NAAT, tbmonth_orgf_naat$ORGANISM_FOUND, units = "days")) # calculate TATs - organism_found to susceptibility
+tbmonth_orgf_naat$testmo<-month(tbmonth_orgf_naat$NAAT)
+tbmonth_orgf_naat <- na.omit(tbmonth_orgf_naat)
+
+#this took soooooo long :(
+table <- tbmonth_orgf_naat %>% group_by(testmo) %>%
+  dplyr::summarise(Count=n(), 
+            Mean.TAT=round(mean(TAT, na.rm=TRUE),digits=1))
+kable(table, caption="Mean Organism Found to NAAT Test TAT by Month", col.names = c("Month","Number of Samples with Both Tests","Mean TAT (days)"))
+
+```
+
+\newpage
+\blandscape
+## All Organisms Found
+```{r organism found tables, echo=FALSE , warning=FALSE, message=FALSE, results = "asis", type = 'latex'}
+
+#Grab all "organism found" Tests for all months
+tbmonth_OF<-subset(tbmonth_1, tbmonth_1$TEST_NAME == 'ORGANISM_FOUND') #all months
+
+#Format month to be a word not a number
+tbmonth_OF$Month<-month.abb[tbmonth_OF$testmo]
+
+#Tabulate smear counts by month
+tb_OF<-as.data.frame(table(tbmonth_OF$Month, tbmonth_OF$RESULT)) #results and incidents
+
+#Reshape into a wide table
+tb_OF_1<-reshape(tb_OF, timevar = 'Var1', idvar = 'Var2', direction = 'wide')
+tb_OF_1$Var2<-as.character(tb_OF_1$Var2)
+
+#Define an "other" variable for weird specimens - NOTE: I've turned this off 
+tb_OF_1$Other<-tb_OF_1$Var2
+#tb_OF_1$Other[tb_OF_1$Var2 == 'M. ABSCESSUS' | tb_OF_1$Var2 == 'M. AVIUM COMPLEX' | tb_OF_1$Var2 == 'M. CHELONAE' | tb_OF_1$Var2 == 'M. FORTUITUM' | tb_OF_1$Var2 == 'M. FREDRIKSBERGENSE'
+#              | tb_OF_1$Var2 == 'M. GORDONAE' | tb_OF_1$Var2 == 'M. HAEMOPHILUM' | tb_OF_1$Var2 == 'M. IMMUNOGENUM' | tb_OF_1$Var2 == 'M. KANSASII' | tb_OF_1$Var2 == 'M. KUBICAE' 
+#              | tb_OF_1$Var2 == 'M. LENTIFLAVUM' | tb_OF_1$Var2 == 'M. MALMOENSE' | tb_OF_1$Var2 == 'M. MARINUM' | tb_OF_1$Var2 == 'M. MARSEILLENSE' | tb_OF_1$Var2 == 'M. MUCOGENICUM PHOCAICUM GROUP' 
+#              | tb_OF_1$Var2 == 'M. NEBRASKENSE' | tb_OF_1$Var2 == 'M. NEOAURUM' | tb_OF_1$Var2 == 'M. OBUENSE' | tb_OF_1$Var2 == 'M. PARAFFINICUM' | tb_OF_1$Var2 == 'M. PARAGORDONAE' 
+#              | tb_OF_1$Var2 == 'M. PEREGRINUM' | tb_OF_1$Var2 == 'M. PORCINUM' | tb_OF_1$Var2 == 'M. SENEGALENSE' | tb_OF_1$Var2 == 'M. SHIMOIDEI' | tb_OF_1$Var2 == 'M. SIMIAE'
+#              | tb_OF_1$Var2 == 'M. STEPHANOLEPIDIS'| tb_OF_1$Var2 == 'M. XENOPI' | tb_OF_1$Var2 == 'MYCOBACTERIUM SPP.' | tb_OF_1$Var2 == 'M. NEBRASKENSE']<- "OTHER ORGANISMS"
+
+#Delete Var2
+tb_OF_2 <- subset(tb_OF_1, select = -(Var2))
+
+#Summarise all Columns 
+tb_OF_3<- tb_OF_2 %>%
+  group_by(Other) %>% 
+  summarise_all(list(sum))
+
+#Remove 'Freq.' from each of the column titles
+names(tb_OF_3) = gsub(pattern = "Freq.", replacement = "", x = names(tb_OF_3))
+names(tb_OF_3)[1]<-"Result"
+
+#Reorder columns 
+col_order <- c("Result", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+tb_OF_4 <- tb_OF_3[, col_order]
+tb_OF_4 <- tb_OF_4[order(tb_OF_4$Result),]  
+
+#Addtotals
+tb_OF_5<-tb_OF_4%>%
+  adorn_totals(c("row","col"))
+
+#Bask in the glory of your hard work
+kable(tb_OF_5, caption = 'Organism Found Results')
+
+```
+\elandscape
