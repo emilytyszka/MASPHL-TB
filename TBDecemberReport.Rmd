@@ -77,6 +77,9 @@ tbmonth2022$TESTDATE <- as.POSIXlt(tbmonth2022$TESTDATE, format="%m/%d/%Y")
 tbmonth2022$maxyr<-max(tbmonth2022$testyr, na.rm = TRUE)
 tbmonth_1<-subset(tbmonth2022, tbmonth2022$testyr == 2022)
 tbmonth_1$maxmo<-max(tbmonth_1$testmo, na.rm = TRUE)
+
+# NA's are showing up as "NULL" - fix this
+is.na(tbmonth_1$RESULT) <- tbmonth_1$RESULT == "NULL"
   
 ```
 
